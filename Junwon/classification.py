@@ -66,11 +66,14 @@ def main(args):
 
     # Get a batch of training data
     inputs, classes = next(iter(dataloaders['train']))
+    print('inputs.shape', inputs.shape)
+    print('classes.shape', classes.shape)
 
     # 'og', 'transfer', 'finetune'
-    model_ft = DNN(input_size=len(inputs[0]), output_size=len(classes[0]),
+    model_ft = DNN(input_size=len(inputs[0]), output_size=len(recipe_datasets['train'].classes),
                    fc_layer_sizes=[1024, 256, 256, 128], dropout=0.2).to(device)
 
+    print(model_ft)
     criterion = nn.CrossEntropyLoss()
 
     # Observe that all parameters are being optimized

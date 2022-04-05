@@ -33,6 +33,8 @@ def train(model, dataloaders, criterion, optimizer, scheduler, metrics,
 
             running_loss = 0.0
             # running_corrects = 0.0
+            running_labels = None
+            running_preds = None
 
             # Iterate over data.
             for idx, (inputs, labels) in enumerate(dataloaders[phase]):
@@ -51,7 +53,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, metrics,
                         print('labels', labels[0])
                         print('outputs', outputs[0])
                         print('preds', preds[0])
-                    loss = criterion(outputs, labels)
+                    loss = criterion(outputs, labels.long())
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -62,17 +64,19 @@ def train(model, dataloaders, criterion, optimizer, scheduler, metrics,
                 running_loss += loss.item() * inputs.size(0)
                 # running_corrects += torch.sum(preds == labels.data)
                 if running_labels is not None:
-                    running_labels = np.vstack([running_labels, labels.clone().detach().cpu().numpy()])
+                    running_labels = np.concatenate((running_labels, labels.clone().detach().cpu().numpy()), axis=0)
                 else:
                     running_labels = labels.clone().detach().cpu().numpy()
                 if running_preds is not None:
-                    running_preds = np.vstack([running_preds, preds.clone().detach().cpu().numpy()])
+                    running_preds = np.concatenate((running_preds, preds.clone().detach().cpu().numpy()), axis=0)
                 else:
                     running_preds = preds.clone().detach().cpu().numpy()
 
 
             epoch_loss = running_loss / dataset_sizes[phase]
             # epoch_acc = running_corrects.double() / dataset_sizes[phase]
+            running_labels = torch.from_numpy(running_labels)
+            running_preds = torch.from_numpy(running_preds)
             epoch_macro_f1 = metrics['macro_f1'](running_labels, running_preds)
             epoch_micro_f1 = metrics['micro_f1'](running_labels, running_preds)
 
@@ -112,7 +116,8 @@ def train(model, dataloaders, criterion, optimizer, scheduler, metrics,
                        'val_macro_f1': val_macro_f1,
                        'val_micro_f1': val_micro_f1,
                        'best_val_loss': best_loss,
-                       'learning_rate': scheduler.get_last_lr()[0]})
+                       'learning_rate': optimizer.param_groups[0]['lr']})
+                                        # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
 
         if early_stop_patience is not None:
             if patience_cnt > early_stop_patience:
