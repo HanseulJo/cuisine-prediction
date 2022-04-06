@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import sklearn.metrics
 import matplotlib.pyplot as plt
 import os
 import wandb
@@ -31,8 +31,8 @@ def visualize_confusion_matrix(model, dataloader, class_names, args, device='cpu
 
         model.train(mode=was_training)
 
-        confusion_matrix = confusion_matrix(labels_stack, preds_stack)
-        disp = ConfusionMatrixDisplay(confusion_matrix=confusion_matrix,
+        confusion_matrix = sklearn.metrics.confusion_matrix(labels_stack, preds_stack)
+        disp = sklearn.metrics.ConfusionMatrixDisplay(confusion_matrix=confusion_matrix,
                                                       display_labels=class_names)
         disp.plot()
         plt.xticks(rotation=90)
