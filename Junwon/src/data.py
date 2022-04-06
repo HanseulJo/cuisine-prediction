@@ -6,7 +6,7 @@ class RecipeDataset(Dataset):
     def __init__(self, data_dir, transform=None, target_transform=None):
         self.data_dir = data_dir
         self.data_file = h5py.File(data_dir, 'r')
-        self.features = self.data_file['features_one_hot'][:]
+        self.features = self.data_file['features_boolean'][:]
         self.labels = self.data_file['labels_int_enc'][:]
         self.classes = sorted(list(set(self.labels)))
         # self.transform = transform
