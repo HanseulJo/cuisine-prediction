@@ -38,11 +38,13 @@ def visualize_confusion_matrix(model, dataloader, class_names, args, device='cpu
         disp.plot()
         plt.xticks(rotation=90)
 
-        fname = ['['+data_dir.split('/')[-1]+']', 'confusionMtrx',
+        fname = ['confusionMtrx',
                  'batch', str(args.batch_size), 'n_epochs', str(args.n_epochs),
                  'lr', str(args.lr), 'step_size', str(args.step_size), 'seed', str(args.seed)]
         fname = '_'.join(fname) + '.png'
 
+        if not os.path.isdir('examples/'):
+            os.mkdir('examples/')
         plt.savefig(os.path.join('examples/', fname))
         if args.wandb_log:
             wandb.log({"confusion_matrix": plt.gcf()})
