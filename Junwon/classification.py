@@ -50,8 +50,10 @@ def main(args):
 
     dataset_name = ['train', 'val']
 
-    recipe_datasets = {x: RecipeDataset(os.path.join(data_dir, x))
-                      for x in dataset_name}
+    recipe_datasets = {'train': RecipeDataset(os.path.join(data_dir, 'train_modified')),
+                       'val': RecipeDataset(os.path.join(data_dir, 'valid_clf_modified'))}
+    # recipe_datasets = {x: RecipeDataset(os.path.join(data_dir, x))
+    #                   for x in dataset_name}
     dataloaders = {x: torch.utils.data.DataLoader(recipe_datasets[x], batch_size=batch_size,
                                                  shuffle=True, num_workers=8)
                   for x in dataset_name}
@@ -107,7 +109,6 @@ def main(args):
     if args.wandb_log:
         wandb.save(os.path.join('./weights/', 'ckpt*'))
 
-    # TODO: confusion matrix
     visualize_confusion_matrix(model_ft, dataloaders['val'], class_names, args, device, data_dir)
 
 if __name__ == '__main__':
