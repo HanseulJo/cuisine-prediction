@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 
+
 def make_one_hot(x):
     if type(x) is not torch.Tensor:
         x = torch.LongTensor(x)
