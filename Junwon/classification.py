@@ -50,8 +50,10 @@ def main(args):
 
     dataset_name = ['train', 'val']
 
-    recipe_datasets = {x: RecipeDataset(os.path.join(data_dir, x))
-                      for x in dataset_name}
+    recipe_datasets = {'train': RecipeDataset(os.path.join(data_dir, 'train_modified')),
+                       'val': RecipeDataset(os.path.join(data_dir, 'valid_clf_modified'))}
+    # recipe_datasets = {x: RecipeDataset(os.path.join(data_dir, x))
+    #                   for x in dataset_name}
     dataloaders = {x: torch.utils.data.DataLoader(recipe_datasets[x], batch_size=batch_size,
                                                  shuffle=True, num_workers=8)
                   for x in dataset_name}
@@ -97,15 +99,16 @@ def main(args):
                                early_stop_patience=20)
 
 
-    fname = ['['+data_dir.split('/')[-1]+']', 'ckpt', 'DNN', 'batch', str(args.batch_size),
+    fname = ['ckpt', 'DNN', 'batch', str(args.batch_size),
              'n_epochs', str(args.n_epochs), 'lr', str(args.lr), 'step_size', str(args.step_size),
              'seed', str(args.seed)]
     fname = '_'.join(fname) + '.pt'
-    torch.save(model_ft.state_dict(), os.path.join('weights/', fname))
+    if not os.path.isdir('./weights/'):
+        os.mkdir('./weights/')
+    torch.save(model_ft.state_dict(), os.path.join('./weights/', fname))
     if args.wandb_log:
-        wandb.save(os.path.join('weights/', 'ckpt*'))
+        wandb.save(os.path.join('./weights/', 'ckpt*'))
 
-    # TODO: confusion matrix
     visualize_confusion_matrix(model_ft, dataloaders['val'], class_names, args, device, data_dir)
 
 if __name__ == '__main__':
