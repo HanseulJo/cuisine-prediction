@@ -10,10 +10,10 @@ from .models import CCNet
 from .train import train
 
 
-def main(data_dir='./Container/'
+def main(data_dir='./Container/',
          subset_length=None,
          dim_embedding=300,
-         dropout=0.2,
+         dropout=0.5,
          batch_size=16,
          n_epochs=50,
          lr=1e-3,
@@ -53,7 +53,7 @@ def main(data_dir='./Container/'
 
     model_ft = CCNet(dim_embedding=dim_embedding, dim_output=len(bin_labels[0]),
                      num_items=len(bin_inputs[0]), num_outputs=2 if classify and complete else 1,
-                     num_enc_layers=4, num_dec_layers=2, ln=True, dropout=0.2,
+                     num_enc_layers=4, num_dec_layers=2, ln=True, dropout=dropout,
                      classify=classify, complete=complete,
                      freeze_classify=freeze_classify, freeze_complete=freeze_complete).to(device)
     print(model_ft)
