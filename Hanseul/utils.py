@@ -3,6 +3,7 @@ import torch.nn.functional as F
 
 
 def make_one_hot(x):
+    """ Convert int_data into bin_data, if needed. """
     if type(x) is not torch.Tensor:
         x = torch.LongTensor(x)
     if x.dim() > 2:
