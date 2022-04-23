@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 
-from .utils import make_one_hot
+from utils import make_one_hot
 
 ## Multi-head Attention Block
 class MAB(nn.Module):
@@ -127,6 +127,8 @@ class Encoder(nn.Module):
                  enc_pool_mode = 'set_transformer',
                 ):
         super(Encoder, self).__init__()
+        assert encoder_mode in ['deep_sets', 'fusion', 'set_transformer']
+        assert enc_pool_mode in ['deep_sets', 'set_transformer']
         assert num_enc_layers % 2 == 0
         self.encoder_mode, self.enc_pool_mode = encoder_mode, enc_pool_mode
         self.padding_idx = num_items

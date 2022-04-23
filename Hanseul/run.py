@@ -8,10 +8,10 @@ from torch.optim import lr_scheduler
 
 import wandb
 
-from .dataset import RecipeDataset
-from .models import CCNet
-from .loss import MultiClassASLoss, MultiClassFocalLoss
-from .train import train
+from dataset import RecipeDataset
+from models import CCNet
+from loss import MultiClassASLoss, MultiClassFocalLoss
+from train import train
 
 LOSSES = {
     'CrossEntropyLoss': nn.CrossEntropyLoss,
@@ -42,7 +42,7 @@ def main(args):
     if args.wandb_log:
         proj_name = ''
         if args.classify:
-            proj_name += 'Cuising Classification' + (' + ' if args.complete else '')
+            proj_name += 'Cuisine Classification' + (' + ' if args.complete else '')
         if args.complete:
             proj_name += 'Recipe Completion'
         wandb.init(project=proj_name, config=args)
@@ -58,14 +58,17 @@ def main(args):
     dataloaders = {x: DataLoader(Subset(recipe_datasets[x], subset_indices[x]),
                                  batch_size=args.batch_size, shuffle=('train' in x)) for x in dataset_names}
     dataset_sizes = {x: len(subset_indices[x]) for x in dataset_names}
-    print(dataset_sizes)
+    if args.verbose:
+        print(dataset_sizes)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print('device: ', device)
+    if args.verbose:
+        print('device: ', device)
 
     ## Get a batch of training data
     loaded_data = next(iter(dataloaders[train_data_name]))
-    print('bin_inputs, int_inputs, *labels:', [x.shape for x in loaded_data])
+    if args.verbose:
+        print('bin_inputs, int_inputs, *labels:', [x.shape for x in loaded_data])
 
     model_ft = CCNet(dim_embedding=args.dim_embedding, dim_output=20, dim_hidden=args.dim_hidden, num_items=len(loaded_data[0][0]),
                      num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers, ln=True, dropout=args.dropout,
@@ -80,18 +83,19 @@ def main(args):
         model_dict.update(pretrained_dict) 
         # 3. load the new state dict
         model_ft.load_state_dict(model_dict)
-    #print(model_ft)  # Model Info
-    total_params = sum(dict((p.data_ptr(), p.numel()) for p in model_ft.parameters() if p.requires_grad).values())
-    print("Total Number of Parameters", total_params)
+    if args.verbose:
+        #print(model_ft)  # Model Info
+        total_params = sum(dict((p.data_ptr(), p.numel()) for p in model_ft.parameters() if p.requires_grad).values())
+        print("Total Number of Parameters", total_params)
 
     # Loss, Optimizer, LR Scheduler
     criterion = LOSSES[args.loss]().to(device)
     optimizer = OPTIMIZERS[args.optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True], lr=args.lr, **OPTIMIZERS_ARG[args.optimizer_name])
-    exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=True)
+    exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
 
     model_ft, best = train(model_ft, dataloaders, criterion, optimizer, exp_lr_scheduler,
                            dataset_sizes, device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
-                           classify=args.classify, complete=args.complete, random_seed=args.seed, wandb_log=args.wandb_log)
+                           classify=args.classify, complete=args.complete, random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
     
     fname = ['ckpt', 'CCNet']
     if args.classify:
@@ -117,7 +121,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('-data', '--data_dir', default='.Container/', type=str,
+    parser.add_argument('-data', '--data_dir', default='./Container/', type=str,
                         help='path to the dataset.')
     parser.add_argument('-bs', '--batch_size', default=64, type=int,
                         help='batch size for training.')
@@ -139,7 +143,7 @@ if __name__ == '__main__':
                         help='embedding dimensinon.')
     parser.add_argument('-hid', '--dim_hidden', default=256, type=int,
                         help='hidden dimensinon.')
-    parser.add_argument('-drop', '--dropout', default=0.2, type=float,
+    parser.add_argument('-drop', '--dropout', default=0., type=float,
                         help='probability for dropout layers.')
     parser.add_argument('-encmode', '--encoder_mode', default='deep_sets', type=str,
                         help='encoder mode: "deep_sets", "fusion", "set_transformer"')
@@ -162,5 +166,6 @@ if __name__ == '__main__':
     parser.add_argument('-fcls', '--freeze_classify', action='store_true')
     parser.add_argument('-fcmp', '--freeze_complete', action='store_true')
     parser.add_argument('-logging', '--wandb_log', action='store_true')
+    parser.add_argument('-v', '--verbose', action='store_true')
 
     main(parser.parse_args())

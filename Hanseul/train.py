@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from sklearn.metrics import f1_score, top_k_accuracy_score
 import wandb
-#from .utils import LogitSelector
+#from utils import LogitSelector
 
 
 def train(model,
@@ -21,7 +21,8 @@ def train(model,
           classify=True,
           complete=True,
           random_seed=1,
-          wandb_log=False):
+          wandb_log=False,
+          verbose=True):
 
     def _concatenate(running_v, new_v):
         if running_v is not None:
@@ -53,9 +54,14 @@ def train(model,
             raise TypeError('early_stop_patience should be an integer.')
         patience_cnt = 0
     
-    print('-' * 5 + 'Training the model' + '-' * 5)
-    for epoch in tqdm(range(1,num_epochs+1)):
-        print(f'\nEpoch {epoch}/{num_epochs}')
+    if verbose:
+        print('-' * 5 + 'Training the model' + '-' * 5)
+        iterator = tqdm(range(1,num_epochs+1))
+    else:
+        iterator = range(1,num_epochs+1)
+    for epoch in iterator:
+        if verbose:
+            print(f'\nEpoch {epoch}/{num_epochs}')
 
         val_loss = 0. # sum of classification and completion loss
 
@@ -149,7 +155,7 @@ def train(model,
                         #torch.nn.utils.clip_grad_norm_(model.parameters(), 1) # gradient clipping
                         optimizer.step()
 
-                if idx % 100 == 0 and phase == 'train':
+                if verbose and idx % 100 == 0 and phase == 'train':
                     log_str = f'    {phase} {idx * 100 // len(dataloaders[dataset_name]):3d}% of an epoch | '
                     if classify and phase in ['train', 'valid_class']:
                         log_str += f'Loss(classif.): {loss_class.item():.4f} | '
@@ -185,7 +191,8 @@ def train(model,
                 epoch_acc_compl = running_corrects_compl / dataset_sizes[dataset_name]  # completion task: accuracy.
                 epoch_top_k_compl = running_top_k_compl / dataset_sizes[dataset_name]
                 log_str += f'Loss(complet.): {epoch_loss_compl:.3f} Acc(complet.): {epoch_acc_compl:.3f} Top-10 Acc: {epoch_top_k_compl:.3f} | '
-            print(log_str)
+            if verbose:
+                print(log_str)
             
             if phase == 'train':
                 train_loss = epoch_loss
@@ -231,22 +238,24 @@ def train(model,
                             learning_rate=optimizer.param_groups[0]['lr'])
                             # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
             if classify:
-                log_dict.updata(dict(train_macro_f1=train_macro_f1, train_micro_f1=train_micro_f1, train_top_k_class=train_top_k_class,
+                log_dict.update(dict(train_macro_f1=train_macro_f1, train_micro_f1=train_micro_f1, train_top_k_class=train_top_k_class,
                                      val_macro_f1=val_macro_f1, val_micro_f1=val_micro_f1, val_top_k_class=val_top_k_class))
             if complete:
-                log_dict.updata(dict(train_acc=train_acc, train_top_k_compl=train_top_k_compl,
+                log_dict.update(dict(train_acc=train_acc, train_top_k_compl=train_top_k_compl,
                                      val_acc=val_acc, val_top_k_compl=val_top_k_compl))
 
             wandb.log(log_dict)              
         
         if early_stop_patience is not None:
             if patience_cnt > early_stop_patience:
-                print(f'Early stop at epoch {epoch}.')
+                if verbose:
+                    print(f'Early stop at epoch {epoch}.')
                 break
         
 
     time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+    if verbose:
+        print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
 
     print('==== Best Result ====')
     for k in best:
