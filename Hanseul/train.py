@@ -4,7 +4,7 @@ from tqdm import tqdm
 import numpy as np
 import torch
 from sklearn.metrics import f1_score, top_k_accuracy_score
-
+import wandb
 #from .utils import LogitSelector
 
 
@@ -20,7 +20,8 @@ def train(model,
           early_stop_patience=None,
           classify=True,
           complete=True,
-          random_seed=1):
+          random_seed=1,
+          wandb_log=False):
 
     def _concatenate(running_v, new_v):
         if running_v is not None:
@@ -195,8 +196,8 @@ def train(model,
                 if complete:
                     train_acc = epoch_acc_compl
                     train_top_k_compl = epoch_top_k_compl
-                # if wandb_log:
-                #     wandb.watch(model)
+                if wandb_log:
+                    wandb.watch(model)
             elif 'val' in phase:
                 val_loss += epoch_loss
                 if classify and phase == 'valid_class':
@@ -225,18 +226,19 @@ def train(model,
         elif early_stop_patience is not None:
             patience_cnt += 1
 
-        """
         if wandb_log:
-            wandb.log({'train_loss': train_loss,
-                       'val_loss': val_loss,
-                       'train_macro_f1': train_macro_f1,
-                       'train_micro_f1': train_micro_f1,
-                       'val_macro_f1': val_macro_f1,
-                       'val_micro_f1': val_micro_f1,
-                       'best_val_loss': best['loss'],
-                       'learning_rate': optimizer.param_groups[0]['lr']})
-                                        # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
-        """
+            log_dict = dict(train_loss=train_loss, val_loss=val_loss,
+                            learning_rate=optimizer.param_groups[0]['lr'])
+                            # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
+            if classify:
+                log_dict.updata(dict(train_macro_f1=train_macro_f1, train_micro_f1=train_micro_f1, train_top_k_class=train_top_k_class,
+                                     val_macro_f1=val_macro_f1, val_micro_f1=val_micro_f1, val_top_k_class=val_top_k_class))
+            if complete:
+                log_dict.updata(dict(train_acc=train_acc, train_top_k_compl=train_top_k_compl,
+                                     val_acc=val_acc, val_top_k_compl=val_top_k_compl))
+
+            wandb.log(log_dict)              
+        
         if early_stop_patience is not None:
             if patience_cnt > early_stop_patience:
                 print(f'Early stop at epoch {epoch}.')

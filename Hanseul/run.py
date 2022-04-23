@@ -6,6 +6,8 @@ from torch import nn, optim
 from torch.utils.data import Subset, DataLoader
 from torch.optim import lr_scheduler
 
+import wandb
+
 from .dataset import RecipeDataset
 from .models import CCNet
 from .loss import MultiClassASLoss, MultiClassFocalLoss
@@ -32,46 +34,29 @@ OPTIMIZERS_ARG = {
 }
 
 
-def main(data_dir='./Container/',
-        dim_embedding=256,
-        dim_hidden=128,
-        dropout=0.5,
-        subset_length=None,
-        encoder_mode='deep_sets',
-        enc_pool_mode='set_transformer',
-        decoder_mode='simple',
-        num_enc_layers=4,
-        num_dec_layers=4,
-        batch_size=16,
-        n_epochs=50,
-        loss='ASLoss',
-        optimizer_name='AdamW',
-        lr=1e-3,
-        step_size=10,  # lr_scheduler
-        step_factor=0.1, # lr_scheduler
-        early_stop_patience=20,   # early stop
-        seed=0,
-        classify=True,
-        complete=True,
-        freeze_classify=False,
-        freeze_complete=False,
-        pretrained_model_path=None
-         ):
+def main(args):
     
-    np.random.seed(seed)
-    torch.random.manual_seed(seed)
+    np.random.seed(args.seed)
+    torch.random.manual_seed(args.seed)
 
-    
+    if args.wandb_log:
+        proj_name = ''
+        if args.classify:
+            proj_name += 'Cuising Classification' + (' + ' if args.complete else '')
+        if args.complete:
+            proj_name += 'Recipe Completion'
+        wandb.init(project=proj_name, config=args)
+        args = wandb.config
 
     # Datasets
-    train_data_name = 'train_class' if classify and not complete else 'train_compl'
+    train_data_name = 'train_class' if args.classify and not args.complete else 'train_compl'
     dataset_names = [train_data_name, 'valid_class', 'valid_compl', 'test_class', 'test_compl']
-    recipe_datasets = {x: RecipeDataset(os.path.join(data_dir, x), test='test' in x) for x in dataset_names}
+    recipe_datasets = {x: RecipeDataset(os.path.join(args.data_dir, x), test='test' in x) for x in dataset_names}
     # DataLoaders
-    subset_indices = {x: [i for i in range(len(recipe_datasets[x]) if subset_length is None else subset_length)
+    subset_indices = {x: [i for i in range(len(recipe_datasets[x]) if args.subset_length is None else args.subset_length)
                           ] for x in dataset_names}
     dataloaders = {x: DataLoader(Subset(recipe_datasets[x], subset_indices[x]),
-                                 batch_size=batch_size, shuffle=('train' in x)) for x in dataset_names}
+                                 batch_size=args.batch_size, shuffle=('train' in x)) for x in dataset_names}
     dataset_sizes = {x: len(subset_indices[x]) for x in dataset_names}
     print(dataset_sizes)
 
@@ -82,12 +67,12 @@ def main(data_dir='./Container/',
     loaded_data = next(iter(dataloaders[train_data_name]))
     print('bin_inputs, int_inputs, *labels:', [x.shape for x in loaded_data])
 
-    model_ft = CCNet(dim_embedding=dim_embedding, dim_output=20, dim_hidden=dim_hidden, num_items=len(loaded_data[0][0]),
-                     num_enc_layers=num_enc_layers, num_dec_layers=num_dec_layers, ln=True, dropout=dropout,
-                     encoder_mode=encoder_mode, enc_pool_mode=enc_pool_mode, decoder_mode=decoder_mode,
-                     classify=classify, complete=complete, freeze_classify=freeze_classify, freeze_complete=freeze_complete).to(device)
-    if pretrained_model_path is not None:
-        pretrained_dict = torch.load(pretrained_model_path)
+    model_ft = CCNet(dim_embedding=args.dim_embedding, dim_output=20, dim_hidden=args.dim_hidden, num_items=len(loaded_data[0][0]),
+                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers, ln=True, dropout=args.dropout,
+                     encoder_mode=args.encoder_mode, enc_pool_mode=args.enc_pool_mode, decoder_mode=args.decoder_mode,
+                     classify=args.classify, complete=args.complete, freeze_classify=args.freeze_classify, freeze_complete=args.freeze_complete).to(device)
+    if args.pretrained_model_path is not None:
+        pretrained_dict = torch.load(args.pretrained_model_path)
         model_dict = model_ft.state_dict()
         # 1. filter out unnecessary keys
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
@@ -100,41 +85,43 @@ def main(data_dir='./Container/',
     print("Total Number of Parameters", total_params)
 
     # Loss, Optimizer, LR Scheduler
-    criterion = LOSSES[loss]().to(device)
-    optimizer = OPTIMIZERS[optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True], lr=lr, **OPTIMIZERS_ARG[optimizer_name])
-    exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=step_factor, patience=step_size, verbose=True)
+    criterion = LOSSES[args.loss]().to(device)
+    optimizer = OPTIMIZERS[args.optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True], lr=args.lr, **OPTIMIZERS_ARG[args.optimizer_name])
+    exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=True)
 
     model_ft, best = train(model_ft, dataloaders, criterion, optimizer, exp_lr_scheduler,
-                           dataset_sizes, device=device, num_epochs=n_epochs, early_stop_patience=early_stop_patience,
-                           classify=classify, complete=complete, random_seed=seed)
+                           dataset_sizes, device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
+                           classify=args.classify, complete=args.complete, random_seed=args.seed, wandb_log=args.wandb_log)
     
     fname = ['ckpt', 'CCNet']
-    if classify:
+    if args.classify:
         fname.append('cls')
-    if complete:
+    if args.complete:
         fname.append('cmp')
     for k in best:
         if k == 'bestEpoch':
             fname.append(f'bestEpoch{int(best[k]):2d}')
         else:
             fname += [f"{k}{float(best[k]):.4f}"]
-    fname += [f'bs{batch_size}',f'lr{lr}', f'seed{seed}',f'nEpochs{n_epochs}',]
-    fname += ['encoder', encoder_mode, 'encPool', enc_pool_mode]
-    if complete:
-        fname += ['decoder', decoder_mode]
+    fname += [f'bs{args.batch_size}',f'lr{args.lr}', f'seed{args.seed}',f'nEpochs{args.n_epochs}',]
+    fname += ['encoder', args.encoder_mode, 'encPool', args.enc_pool_mode]
+    if args.complete:
+        fname += ['decoder', args.decoder_mode]
     fname = '_'.join(fname) + '.pt'
     if not os.path.isdir('./weights/'):
         os.mkdir('./weights/')
     torch.save(model_ft.state_dict(), os.path.join('./weights/', fname))
+    if args.wandb_log:
+        wandb.save(os.path.join('./weights/', 'ckpt*'))
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('-d', '--data_dir', default='.Container/', type=str,
+    parser.add_argument('-data', '--data_dir', default='.Container/', type=str,
                         help='path to the dataset.')
-    parser.add_argument('-b', '--batch_size', default=64, type=int,
+    parser.add_argument('-bs', '--batch_size', default=64, type=int,
                         help='batch size for training.')
-    parser.add_argument('-e', '--n_epochs', default=100, type=int,
+    parser.add_argument('-epochs', '--n_epochs', default=100, type=int,
                         help='number of epochs for training.')
     parser.add_argument('-lr', '--lr', default=1e-3, type=float,
                         help='learning rate for training optimizer.')
@@ -174,5 +161,6 @@ if __name__ == '__main__':
     parser.add_argument('-cmp', '--complete', action='store_true')
     parser.add_argument('-fcls', '--freeze_classify', action='store_true')
     parser.add_argument('-fcmp', '--freeze_complete', action='store_true')
+    parser.add_argument('-logging', '--wandb_log', action='store_true')
 
-    main(**vars(parser.parse_args()))
+    main(parser.parse_args())
