@@ -117,7 +117,7 @@ def main(args):
     torch.save(model_ft.state_dict(), os.path.join('./weights/', fname))
     if args.wandb_log:
         wandb.save(os.path.join('./weights/', 'ckpt*'))
-
+    wandb.finish()
 
 if __name__ == '__main__':
     parser = ArgumentParser()
