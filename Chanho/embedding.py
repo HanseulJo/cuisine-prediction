@@ -95,7 +95,7 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
                 break
         features_temp.append(feature)
 
-    h5f.create_dataset('labels_one_hot', data=features, compression="gzip")
+    h5f.create_dataset('labels_one_hot', data=features_temp, compression="gzip")
     h5f.create_dataset('labels_id', data=labels, compression="gzip")
 
     t_file.close()
