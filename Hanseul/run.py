@@ -15,8 +15,8 @@ from train import train
 
 LOSSES = {
     'CrossEntropyLoss': nn.CrossEntropyLoss,
-    'FocalLoss': MultiClassFocalLoss,
-    'ASLoss': MultiClassASLoss,
+    'MultiClassFocalLoss': MultiClassFocalLoss,
+    'MultiClassASLoss': MultiClassASLoss,
 }
 OPTIMIZERS = {
     'SGD': optim.SGD,
@@ -26,11 +26,11 @@ OPTIMIZERS = {
     'AdamW': optim.AdamW,
 }
 OPTIMIZERS_ARG = {
-    'SGD': {'weight_decay':0.2},
-    'MomentumSGD': {'weight_decay':0.2, 'momentum':0.9},
-    'NestrovSGD': {'weight_decay':0.2, 'momentum':0.9, 'nesterov':True},
-    'Adam': {'weight_decay':0.2},
-    'AdamW': {'weight_decay':0.2},
+    'SGD': {},
+    'MomentumSGD': {'momentum':0.9},
+    'NestrovSGD': {'momentum':0.9, 'nesterov':True},
+    'Adam': {},
+    'AdamW': {},
 }
 
 
@@ -38,7 +38,31 @@ def main(args):
     
     np.random.seed(args.seed)
     torch.random.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.cuda.seed_all()
 
+    # Datasets
+    dataset_names = ['train', 'valid_clf', 'valid_cpl', 'test_clf', 'test_cpl']
+    if args.datasets is None:
+        recipe_datasets = {x: RecipeDataset(os.path.join(args.data_dir, x)) for x in dataset_names}
+    else:
+        # Use Pre-loaded datasets.
+        recipe_datasets = args.datasets
+        args.datasets = None
+    # DataLoaders
+    subset_indices = {x: [i for i in range(len(recipe_datasets[x]) if args.subset_length is None else args.subset_length)
+                          ] for x in dataset_names}
+    dataloaders = {x: DataLoader(Subset(recipe_datasets[x], subset_indices[x]),
+                                 batch_size=args.batch_size if ('train' in x) else args.batch_size_eval,
+                                 shuffle=('train' in x)) for x in dataset_names}
+    dataset_sizes = {x: len(subset_indices[x]) for x in dataset_names}
+    if args.verbose:
+        print(dataset_sizes)
+    dataloaders['train_eval'] = DataLoader(Subset(recipe_datasets['train'], subset_indices['train']),
+                                 batch_size=args.batch_size_eval, shuffle=False)
+    dataset_sizes['train_eval'] = dataset_sizes['train']
+    
+    # WandB
     if args.wandb_log:
         proj_name = ''
         if args.classify:
@@ -48,31 +72,20 @@ def main(args):
         wandb.init(project=proj_name, config=args)
         args = wandb.config
 
-    # Datasets
-    train_data_name = 'train_class' if args.classify and not args.complete else 'train_compl'
-    dataset_names = [train_data_name, 'valid_class', 'valid_compl', 'test_class', 'test_compl']
-    recipe_datasets = {x: RecipeDataset(os.path.join(args.data_dir, x), test='test' in x) for x in dataset_names}
-    # DataLoaders
-    subset_indices = {x: [i for i in range(len(recipe_datasets[x]) if args.subset_length is None else args.subset_length)
-                          ] for x in dataset_names}
-    dataloaders = {x: DataLoader(Subset(recipe_datasets[x], subset_indices[x]),
-                                 batch_size=args.batch_size, shuffle=('train' in x)) for x in dataset_names}
-    dataset_sizes = {x: len(subset_indices[x]) for x in dataset_names}
-    if args.verbose:
-        print(dataset_sizes)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.verbose:
         print('device: ', device)
 
     ## Get a batch of training data
-    loaded_data = next(iter(dataloaders[train_data_name]))
+    features_boolean, labels_one_hot, labels_int = next(iter(dataloaders['train']))
     if args.verbose:
-        print('bin_inputs, int_inputs, *labels:', [x.shape for x in loaded_data])
+        print('features_boolean {} labels_one_hot {} labels_int {}'.format(
+            features_boolean.size(), labels_one_hot.size(), labels_int.size()))
 
-    model_ft = CCNet(dim_embedding=args.dim_embedding, dim_output=20, dim_hidden=args.dim_hidden, num_items=len(loaded_data[0][0]),
-                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers, ln=True, dropout=args.dropout,
-                     encoder_mode=args.encoder_mode, enc_pool_mode=args.enc_pool_mode, decoder_mode=args.decoder_mode,
+    model_ft = CCNet(dim_embedding=args.dim_embedding, dim_hidden=args.dim_hidden,
+                     dim_outputs=labels_one_hot.size(0), num_items=features_boolean.size(-1),
+                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers, num_outputs_cpl=args.num_outputs_cpl,
+                     ln=True, dropout=args.dropout, encoder_mode=args.encoder_mode, pooler_mode=args.pooler_mode, 
                      classify=args.classify, complete=args.complete, freeze_classify=args.freeze_classify, freeze_complete=args.freeze_complete).to(device)
     if args.pretrained_model_path is not None:
         pretrained_dict = torch.load(args.pretrained_model_path)
@@ -90,11 +103,12 @@ def main(args):
 
     # Loss, Optimizer, LR Scheduler
     criterion = LOSSES[args.loss]().to(device)
-    optimizer = OPTIMIZERS[args.optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True], lr=args.lr, **OPTIMIZERS_ARG[args.optimizer_name])
-    exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
+    optimizer = OPTIMIZERS[args.optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True],
+                                                lr=args.lr, weight_decay=args.weight_decay, **OPTIMIZERS_ARG[args.optimizer_name])
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
 
-    model_ft, best = train(model_ft, dataloaders, criterion, optimizer, exp_lr_scheduler,
-                           dataset_sizes, device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
+    model_ft, best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
+                           device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
                            classify=args.classify, complete=args.complete, random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
     
     fname = ['ckpt', 'CCNet']
@@ -106,11 +120,9 @@ def main(args):
         if k == 'bestEpoch':
             fname.append(f'bestEpoch{int(best[k]):2d}')
         else:
-            fname += [f"{k}{float(best[k]):.4f}"]
+            fname += [f"{k}{float(best[k]):.3f}"]
     fname += [f'bs{args.batch_size}',f'lr{args.lr}', f'seed{args.seed}',f'nEpochs{args.n_epochs}',]
-    fname += ['encoder', args.encoder_mode, 'encPool', args.enc_pool_mode]
-    if args.complete:
-        fname += ['decoder', args.decoder_mode]
+    fname += ['Encodee', args.encoder_mode, 'Pool', args.pooler_mode]
     fname = '_'.join(fname) + '.pt'
     if not os.path.isdir('./weights/'):
         os.mkdir('./weights/')
@@ -118,6 +130,7 @@ def main(args):
     if args.wandb_log:
         wandb.save(os.path.join('./weights/', 'ckpt*'))
     wandb.finish()
+    
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -125,10 +138,14 @@ if __name__ == '__main__':
                         help='path to the dataset.')
     parser.add_argument('-bs', '--batch_size', default=64, type=int,
                         help='batch size for training.')
+    parser.add_argument('-bseval', '--batch_size_eval', default=2048, type=int,
+                        help='batch size for evaluation.')
     parser.add_argument('-epochs', '--n_epochs', default=100, type=int,
                         help='number of epochs for training.')
     parser.add_argument('-lr', '--lr', default=1e-3, type=float,
                         help='learning rate for training optimizer.')
+    parser.add_argument('-l2', '--weight_decay', default=0., type=float,
+                        help='l2 regularization for optimizer.')
     parser.add_argument('-step', '--step_size', default=10, type=int,
                         help='step size for learning rate scheduler.')
     parser.add_argument('-factor', '--step_factor', default=0.1, type=float,
@@ -145,15 +162,15 @@ if __name__ == '__main__':
                         help='hidden dimensinon.')
     parser.add_argument('-drop', '--dropout', default=0., type=float,
                         help='probability for dropout layers.')
-    parser.add_argument('-encmode', '--encoder_mode', default='deep_sets', type=str,
-                        help='encoder mode: "deep_sets", "fusion", "set_transformer"')
-    parser.add_argument('-poolmode', '--enc_pool_mode', default='set_transformer', type=str,
-                        help='encoder pooler mode: "deep_sets", "fusion", "set_transformer"')
-    parser.add_argument('-decmode', '--decoder_mode', default='simple', type=str,
-                        help='decoder pooler mode: "simple", "concat", "concat_attention",...')
-    parser.add_argument('-numenc', '--num_enc_layers', default=4, type=int,
+    parser.add_argument('-encmode', '--encoder_mode', default='HYBRID', type=str,
+                        help='encoder mode: "FC", "ATT", "HYBRID"')
+    parser.add_argument('-poolmode', '--pooler_mode', default='ATT', type=str,
+                        help='encoder pooler mode: "deepSets", "ATT"')
+    parser.add_argument('-noutcpl', '--num_outputs_cpl', default=2, type=int,
+                        help='') 
+    parser.add_argument('-numenc', '--num_enc_layers', default=2, type=int,
                         help='depth of encoder (number of Resblock/ISAB')
-    parser.add_argument('-numdec', '--num_dec_layers', default=4, type=int,
+    parser.add_argument('-numdec', '--num_dec_layers', default=2, type=int,
                         help='depth of decoder (number of Resblock/ISAB')
     parser.add_argument('-loss', '--loss', default='ASLoss', type=str,
                         help=f"loss functions: {list(LOSSES.keys())}")
@@ -167,5 +184,8 @@ if __name__ == '__main__':
     parser.add_argument('-fcmp', '--freeze_complete', action='store_true')
     parser.add_argument('-logging', '--wandb_log', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-datasets', '--datasets', default=None)
+
+
 
     main(parser.parse_args())

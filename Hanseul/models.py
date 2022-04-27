@@ -140,13 +140,9 @@ class CCNet(nn.Module):
         # Classification:
         if self.classify:
             logit_classification = self.classifier(self.pooler1(recipe_feature))  # (batch, dim_output)
-            if not self.complete:
-                return logit_classification
             
         # Completion:
         if self.complete:
             logit_completion = self.completer(self.pooler2(recipe_feature))  # (batch, num_items)
-            if not self.classify:
-                return logit_completion
 
         return logit_classification, logit_completion
