@@ -116,12 +116,12 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
     lines = t_file.readlines()
     for line in lines:
         feature = np.zeros(num_ingredients)
-    temp_lst = line.strip().split(",")
-    for ingred in temp_lst:
-        if rm_same:
-            ingred = ingred_dict[ingred_lst[int(ingred) - 1]][0]
-        feature[int(ingred) - 1] = 1
-    features.append(feature)
+        temp_lst = line.strip().split(",")
+        for ingred in temp_lst:
+            if rm_same:
+                ingred = ingred_dict[ingred_lst[int(ingred) - 1]][0]
+            feature[int(ingred) - 1] = 1
+        features.append(feature)
 
     h5f.create_dataset('features_boolean', data=features, compression="gzip")
 
@@ -135,13 +135,13 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
     lines = t_file.readlines()
     for line in lines:
         cuisine = line.strip()
-    labels.append(cuisine_dict[cuisine])
+        labels.append(cuisine_dict[cuisine])
 
     one_hot_labels = []
     for label in labels:
         one_hot_label = np.zeros(20)
-    one_hot_label[label] = 1
-    one_hot_labels.append(one_hot_label)
+        one_hot_label[label] = 1
+        one_hot_labels.append(one_hot_label)
 
     h5f.create_dataset('labels_int_enc', data=labels, compression="gzip")
     h5f.create_dataset('labels_one_hot', data=one_hot_labels, compression="gzip")
@@ -189,12 +189,12 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
     lines = t_file.readlines()
     for line in lines:
         feature = np.zeros(num_ingredients)
-    temp_lst = line.strip().split(",")
-    for ingred in temp_lst:
-        if rm_same:
-            ingred = ingred_dict[ingred_lst[int(ingred) - 1]][0]
-        feature[int(ingred) - 1] = 1
-    features.append(feature)
+        temp_lst = line.strip().split(",")
+        for ingred in temp_lst:
+            if rm_same:
+                ingred = ingred_dict[ingred_lst[int(ingred) - 1]][0]
+            feature[int(ingred) - 1] = 1
+        features.append(feature)
 
     h5f.create_dataset('features_boolean', data=features, compression="gzip")
 
