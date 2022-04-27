@@ -19,26 +19,6 @@ from src.metrics import top_k_accuracy
 
 
 
-# class TargetTransform():
-#     def __init__(self, classes, class_to_idx):
-#         self.classes = list()
-#         self.idx_to_class = {v: k for k, v in class_to_idx.items()}
-#         for c in classes:
-#             for word in c.split(' '):
-#                 self.classes.append(word)
-#         self.classes = list(set(self.classes))
-#         self.classes.sort()
-#         self.class_to_target = {_class: idx for idx, _class in enumerate(self.classes)}
-#
-#     def target_transformation(self, target):
-#         _class = self.idx_to_class[target]
-#         target = np.zeros(len(self.classes))
-#         for c in _class.split(' '):
-#             target[self.class_to_target[c]] = 1
-#
-#         return target.astype(np.float32)
-
-
 def main(args):
     if args.wandb_log:
         wandb.init(project=f'cuisine_{args.task}', config=args)
@@ -147,7 +127,7 @@ if __name__ == '__main__':
                         help='step size for training scheduler.')
     parser.add_argument('-s', '--seed', default=0, type=int,
                         help='random seed number.')
-    parser.add_argument('-f', '--fc_layer_sizes', default=[1024, 1024, 512, 256], type=lambda x: len(x)>=1,  # [1024, 256, 256, 128]
+    parser.add_argument('-f', '--fc_layer_sizes', default=[4096, 2048, 1024, 512], type=lambda x: len(x)>=1,  # [1024, 256, 256, 128]
                                             help='size of fc layers.')
     # parser.add_argument('-ext', '--image_extensions',
     #                     default=('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tiff', '.webp'),

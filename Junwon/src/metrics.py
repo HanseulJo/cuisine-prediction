@@ -1,6 +1,6 @@
 import torch
 
-def top_k_accuracy(y_true, y_score, k=10):
+def top_k_accuracy(y_true, y_score, k=1):
     if not y_true.shape[0] == y_score.shape[0]:
         raise ValueError(f'y_true has shape {y_true.shape} and y_score has shape {y_score.shape}.')
 

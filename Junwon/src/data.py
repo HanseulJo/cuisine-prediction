@@ -22,7 +22,6 @@ class RecipeDataset(Dataset):
             self.features = self.data_file['features_boolean'][:]
             self.labels = self.data_file['labels_int_enc'][:]
             if self.task == 'completion':
-                # TODO: remove recipe len=1
                 # remove recipies with ingredient length is 1
                 indices_1 = np.where(np.add.reduce(self.data_file['features_boolean'][:], axis=1) == 1.)
                 indices_1 = indices_1[0]
@@ -31,6 +30,7 @@ class RecipeDataset(Dataset):
                     self.features = np.delete(self.features, idx, axis=0)
                     self.labels = np.delete(self.labels, idx, axis=0)
 
+                # save indices of ingredients
                 self.features_one_indicies = list([] for _ in range(self.features.shape[0]))
                 ones_idxs = np.nonzero(self.features)
 
@@ -60,6 +60,8 @@ class RecipeDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.dataset_type == 'train' and self.task == 'completion':
+            # randomly delete one ingredient from a recipe,
+            # and output as a label
             np.random.seed(seed=self.random_seed)
             rand_idx = np.random.randint(0, len(self.features_one_indicies[idx]))
             feature = self.features[idx].copy()

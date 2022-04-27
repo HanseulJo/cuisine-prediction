@@ -106,6 +106,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, metrics,
                 print('{} Loss: {:.4f} Top-k-Acc: {:.4f}'.format(
                     phase, epoch_loss, epoch_topk_acc))
 
+            # log train results
             if phase == 'train':
                 train_loss = epoch_loss
                 if task == 'classification':
