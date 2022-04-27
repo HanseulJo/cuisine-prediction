@@ -127,19 +127,15 @@ class MultiLabelASLoss(nn.Module):
     - ASL paper: https://arxiv.org/abs/2009.14119
     - optimized ASL: https://github.com/Alibaba-MIIL/ASL/blob/main/src/loss_functions/losses.py
     '''
-    def __init__(self, gamma_pos=1, gamma_neg=4, clip=0.05, eps=1e-8, disable_torch_grad_focal_loss=False, average='macro'):
+    def __init__(self, gamma_pos=0, gamma_neg=4, clip=0.05, eps=1e-8, disable_torch_grad_focal_loss=False, average='macro'):
         super(MultiLabelASLoss, self).__init__()
-        
-        self.gamma_pos = gamma_pos
+
         self.gamma_neg = gamma_neg
+        self.gamma_pos = gamma_pos
         self.clip = clip
         self.disable_torch_grad_focal_loss = disable_torch_grad_focal_loss
         self.eps = eps
         self.average = average
-
-        # prevent memory allocation and gpu uploading every iteration, and encourages inplace operations
-        self.targets = self.anti_targets = self.xs_pos = self.xs_neg = self.asymmetric_w = self.loss = None
-        self.tp = self.fp = self.fn = self.f1 = None
 
     def forward(self, x, y):
         """"
@@ -149,49 +145,47 @@ class MultiLabelASLoss(nn.Module):
         y: targets (multi-label binarized vector)
         """
 
-        self.targets = y.float()
-        self.anti_targets = 1 - y.float()
-
         # Calculating Probabilities
-        self.xs_pos = torch.sigmoid(x.float())
-        self.xs_neg = 1.0 - self.xs_pos
+        x_sigmoid = torch.sigmoid(x)
+        xs_pos = x_sigmoid
+        xs_neg = 1 - x_sigmoid
         
-        # TP/FP/FN
-        self.tp = (self.xs_pos * self.targets).sum(dim=0)
-        self.fp = (self.xs_pos * self.anti_targets).sum(dim=0)
-        self.fn = (self.xs_neg * self.targets).sum(dim=0)        
+        # TP / FP / FN
+        tp = (xs_pos * y).sum(dim=0)
+        fp = (xs_pos * (1-y)).sum(dim=0)
+        fn = (xs_neg * y).sum(dim=0) 
         
         if self.average == 'micro':
-            self.tp = self.tp.sum()
-            self.fp = self.fp.sum()
-            self.fn = self.fn.sum()
+            tp = tp.sum()
+            fp = fp.sum()
+            fn = fn.sum()
         
         # F1 score
-        self.f1 = (self.tp / (self.tp + 0.5*(self.fp + self.fn) + self.eps)).clamp(
-            min=self.eps, max=1-self.eps)
+        f1 = (tp / (tp + 0.5*(fp + fn) + self.eps)).clamp(min=self.eps, max=1.-self.eps).mean()
 
         # Asymmetric Clipping
         if self.clip is not None and self.clip > 0:
-            self.xs_neg.add_(self.clip)
-            self.xs_neg.clamp_(max=1.)
+            xs_neg = (xs_neg + self.clip).clamp(max=1)
 
         # Basic CE calculation
-        self.loss = self.targets * torch.log(self.xs_pos.clamp(min=self.eps))
-        self.loss.add_(self.anti_targets * torch.log(self.xs_neg.clamp(min=self.eps)))
+        los_pos = y * torch.log(xs_pos.clamp(min=self.eps))
+        los_neg = (1 - y) * torch.log(xs_neg.clamp(min=self.eps))
+        loss = los_pos + los_neg
 
         # Asymmetric Focusing
         if self.gamma_neg > 0 or self.gamma_pos > 0:
             if self.disable_torch_grad_focal_loss:
                 torch.set_grad_enabled(False)
-            self.xs_pos = self.xs_pos * self.targets
-            self.xs_neg = self.xs_neg * self.anti_targets
-            self.asymmetric_w = torch.pow(1 - self.xs_pos - self.xs_neg,
-                                          self.gamma_pos * self.targets + self.gamma_neg * self.anti_targets)
+            pt0 = xs_pos * y
+            pt1 = xs_neg * (1 - y)  # pt = p if t > 0 else 1-p
+            pt = pt0 + pt1
+            one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1 - y)
+            one_sided_w = torch.pow(1 - pt, one_sided_gamma)
             if self.disable_torch_grad_focal_loss:
                 torch.set_grad_enabled(True)
-            self.loss *= self.asymmetric_w
+            loss *= one_sided_w
 
-        return -self.loss.mean(dim=0).sum() + (1.-self.f1.mean())
+        return -loss.mean(dim=0).sum() + 1. - f1
 
 
 ## MultiLabel Binary Cross Entropy Loss
