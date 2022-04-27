@@ -4,7 +4,7 @@ from collections import defaultdict
 from sklearn.preprocessing import normalize
 
 
-def ensemble(rec_list, weight=None):
+def ensemble(rec_list, weight=None, n=10):
     new_recs = {}
     query_set = set()
     if weight == None:
@@ -23,6 +23,7 @@ def ensemble(rec_list, weight=None):
             rec_scores = normalize(np.array(rec_scores)[:,np.newaxis], axis=0).ravel()
             for i, rec_item in enumerate(rec_items):
                 en_rec[rec_item] += rec_scores[i] * w
-        rec_lst = sorted(list(en_rec.items()), key= lambda x: x[1], reverse=True)[:10]
+        topk = min(n, len(en_rec))
+        rec_lst = sorted(list(en_rec.items()), key= lambda x: x[1], reverse=True)[:topk]
         new_recs[query] = rec_lst
     return new_recs
