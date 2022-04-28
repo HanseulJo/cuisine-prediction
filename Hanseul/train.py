@@ -15,7 +15,6 @@ def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5)
     for idx, (feature_boolean, _, labels_int) in enumerate(dataloaders[phase]):
         batch_size = feature_boolean.size(0)
         feature_boolean = feature_boolean.to(device)
-        #print(labels_int)
         labels_int = labels_int.to(device)
         outputs_clf, outputs_cpl = model(feature_boolean)
         if phase in ['train_eval', 'valid_clf']:

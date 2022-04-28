@@ -109,7 +109,7 @@ def main(args):
 
     model_ft, best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                            device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
-                           classify=args.classify, complete=args.complete, random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
+                           random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
     
     fname = ['ckpt', 'CCNet']
     if args.classify:
