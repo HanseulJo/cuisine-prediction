@@ -68,9 +68,9 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     # BEST MODEL SAVING
     best = {}
     if classify:
-        best['clf'] = dict(Loss=float('inf'), Acc=-1., Topk=-1.)
+        best['clf'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1.)
     if complete:
-        best['cpl'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1.)
+        best['cpl'] = dict(Loss=float('inf'), Acc=-1., Topk=-1.)
     best_model_wts = deepcopy(model.state_dict())
 
     if early_stop_patience is not None:
@@ -111,11 +111,11 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
             if classify:
                 _, preds_clf = torch.max(outputs_clf, 1)
                 loss_clf = criterion(outputs_clf, labels_clf.long())
-                loss = loss_clf
+                loss = loss + loss_clf
             if complete: 
                 _, preds_cpl = torch.max(outputs_cpl, 1)
                 loss_cpl = criterion(outputs_cpl, labels_cpl.long())
-                loss += loss_cpl
+                loss = loss + loss_cpl
             loss.backward()
             #torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)  # gradient clipping
             optimizer.step()
@@ -125,13 +125,13 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 if classify:
                     print('    *label_clf', labels_clf.cpu().numpy()[:12])
                     print('    *preds_clf', preds_clf.cpu().numpy()[:12])
-                    log_str += " Loss_clf {:.4f} | Acc_clf {:.4f}".format(
+                    log_str += " Loss_clf {:.4f} | Acc_clf {:.4f} |".format(
                         loss_clf.item(), accuracy_score(labels_clf.cpu().numpy(), preds_clf.cpu().numpy()))
                 if complete:
                     print('    >label_cpl', labels_cpl.cpu().numpy()[:12])
                     print('    >preds_cpl', preds_cpl.cpu().numpy()[:12])
-                    log_str += " Loss_cpl {:.4f} | Acc_cpl {:.4f}".format(
-                        loss_cpl.item(), accuracy_score(labels_clf.cpu().numpy(), preds_cpl.cpu().numpy()))
+                    log_str += " Loss_cpl {:.4f} | Acc_cpl {:.4f} |".format(
+                        loss_cpl.item(), accuracy_score(labels_cpl.cpu().numpy(), preds_cpl.cpu().numpy()))
                 print(log_str)
 
         if wandb_log:
@@ -142,9 +142,10 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         with torch.set_grad_enabled(False):
             if classify:
                 stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5)
-                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5)
                 if verbose:
                     print("TRAIN_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_train.items()]))
+                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5)
+                if verbose:
                     print("VALID_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_clf.items()]))
             if complete:
                 stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10)
@@ -171,7 +172,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 log_dict.update({'TrainClassify'+k: v for k, v in stat_train.items()})
                 log_dict.update({'ValidClassify'+k: v for k, v in stat_valid_clf.items()})
             if complete:
-                log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_clf.items()})
+                log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_cpl.items()})
             wandb.log(log_dict)              
         
         if early_stop_patience is not None and patience_cnt > early_stop_patience:

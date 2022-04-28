@@ -13,25 +13,31 @@ class ResBlock(nn.Module):
     def __init__(self, dim_input, dim_hidden, dim_output, norm='bn', dropout=0):
         super(ResBlock, self).__init__()
         self.use_skip_conn = (dim_input == dim_output)
+
         if norm == 'bn':
             norm_layer = nn.BatchNorm1d
         elif norm == 'ln':
             norm_layer = nn.LayerNorm
-        ff = []
+        self.fc1 = nn.Linear(dim_input, dim_hidden)
+        self.fc2 = nn.Linear(dim_hidden, dim_output)
         if norm in ['bn', 'ln']:
-            ff.append(norm_layer(dim_input))
-        ff.extend([nn.ReLU(), nn.Linear(dim_input, dim_hidden)])
-        if dropout > 0:
-            ff.append(nn.Dropout(dropout))
-        if norm in ['bn', 'ln']:
-            ff.append(norm_layer(dim_hidden))
-        ff.extend([nn.ReLU(), nn.Linear(dim_hidden, dim_output)])
-        self.ff = nn.Sequential(*ff)
+            self.norm1 = norm_layer(dim_input)
+            self.norm2 = norm_layer(dim_hidden)
+        self.p = dropout
         
     def forward(self, x, **kwargs):
+        out = x
+        if hasattr(self, 'norm1'):
+            out = self.norm1(out)
+        out = self.fc1(F.relu(out))
+        if self.p > 0:
+            out = F.dropout(out)
+        if hasattr(self, 'norm2'):
+            out = self.norm2(out)
+        out = self.fc2(F.relu(out))
         if self.use_skip_conn:
-            return self.ff(x) + x
-        return self.ff(x)
+            return out + x
+        return out
 
 
 ## Attention Layers (from "Set Transformers")
