@@ -94,9 +94,7 @@ class Completer(nn.Module):
         layers.append(nn.Linear(dim_hidden*2, num_items))
         self.decoder = nn.Sequential(*layers)
         
-        self.layers=layers
     def forward(self, x):
-        print(len(self.layers))
         return self.decoder(x)
 
 
