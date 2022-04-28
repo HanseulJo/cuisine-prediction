@@ -68,9 +68,9 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     # BEST MODEL SAVING
     best = {}
     if classify:
-        best['clf'] = dict(Loss=float('inf'), Acc=-1., Topk=-1.)
+        best['clf'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1.)
     if complete:
-        best['cpl'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1.)
+        best['cpl'] = dict(Loss=float('inf'), Acc=-1., Topk=-1.)
     best_model_wts = deepcopy(model.state_dict())
 
     if early_stop_patience is not None:
