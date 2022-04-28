@@ -9,7 +9,7 @@ import wandb
 
 from utils import _concatenate
 
-def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5):
+def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5, verbose=True):
     running_loss = running_acc = running_top_k_acc = 0.
     running_labels = running_preds = None
     for idx, (feature_boolean, _, labels_int) in enumerate(dataloaders[phase]):
@@ -22,7 +22,7 @@ def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5)
         elif phase in ['valid_cpl']:
             _, preds = torch.max(outputs_cpl, 1)
         
-        if idx == 0:
+        if verbose and idx == 0:
             print('label', labels_int.cpu().numpy()[:10])
             print('preds', preds.cpu().numpy()[:10])
         
@@ -141,14 +141,14 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         model.eval()
         with torch.set_grad_enabled(False):
             if classify:
-                stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5)
+                stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
                 if verbose:
                     print("TRAIN_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_train.items()]))
-                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5)
+                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
                 if verbose:
                     print("VALID_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_clf.items()]))
             if complete:
-                stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10)
+                stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10, verbose=verbose)
                 if verbose:
                     print("VALID_CPL", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_cpl.items()]))
         
