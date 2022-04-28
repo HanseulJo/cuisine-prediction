@@ -107,10 +107,15 @@ def main(args):
                                                 lr=args.lr, weight_decay=args.weight_decay, **OPTIMIZERS_ARG[args.optimizer_name])
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
 
-    model_ft, best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
-                           device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
-                           random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
-    
+    try:
+        model_ft, best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
+                               device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
+                               random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
+    except KeyboardInterrupt:
+        if args.wandb_log:
+            wandb.finish()
+        print("Finished by KeyboardInterupt")
+        return
     fname = ['ckpt', 'CCNet']
     if args.classify:
         fname.append('cls')
