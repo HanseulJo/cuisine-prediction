@@ -172,7 +172,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 log_dict.update({'TrainClassify'+k: v for k, v in stat_train.items()})
                 log_dict.update({'ValidClassify'+k: v for k, v in stat_valid_clf.items()})
             if complete:
-                log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_clf.items()})
+                log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_cpl.items()})
             wandb.log(log_dict)              
         
         if early_stop_patience is not None and patience_cnt > early_stop_patience:
