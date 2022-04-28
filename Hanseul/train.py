@@ -131,7 +131,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                     print('    >label_cpl', labels_cpl.cpu().numpy()[:12])
                     print('    >preds_cpl', preds_cpl.cpu().numpy()[:12])
                     log_str += " Loss_cpl {:.4f} | Acc_cpl {:.4f}".format(
-                        loss_cpl.item(), accuracy_score(labels_clf.cpu().numpy(), preds_cpl.cpu().numpy()))
+                        loss_cpl.item(), accuracy_score(labels_cpl.cpu().numpy(), preds_cpl.cpu().numpy()))
                 print(log_str)
 
         if wandb_log:
