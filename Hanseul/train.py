@@ -111,11 +111,11 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
             if classify:
                 _, preds_clf = torch.max(outputs_clf, 1)
                 loss_clf = criterion(outputs_clf, labels_clf.long())
-                loss = loss_clf
+                loss = loss + loss_clf
             if complete: 
                 _, preds_cpl = torch.max(outputs_cpl, 1)
                 loss_cpl = criterion(outputs_cpl, labels_cpl.long())
-                loss += loss_cpl
+                loss = loss + loss_cpl
             loss.backward()
             #torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)  # gradient clipping
             optimizer.step()
