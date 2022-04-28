@@ -142,9 +142,10 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         with torch.set_grad_enabled(False):
             if classify:
                 stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5)
-                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5)
                 if verbose:
                     print("TRAIN_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_train.items()]))
+                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5)
+                if verbose:
                     print("VALID_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_clf.items()]))
             if complete:
                 stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10)

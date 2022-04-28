@@ -20,13 +20,13 @@ class Encoder(nn.Module):
         self.embedding = nn.Embedding(num_embeddings=num_items+1, embedding_dim=dim_embedding, padding_idx=-1)
         if mode == 'FC':
             layers = [nn.Linear(dim_embedding, dim_hidden)]
-            layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers-1)])
+            layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers)])
         elif mode == 'ATT':
             layers = [ISAB(dim_embedding, dim_hidden, num_heads, num_inds, ln=ln, dropout=dropout)]
-            layers.extend([ISAB(dim_hidden, dim_hidden, num_heads, num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers-1)])
+            layers.extend([ISAB(dim_hidden, dim_hidden, num_heads, num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers)])
         elif mode == 'HYBRID':
             layers = [nn.Linear(dim_embedding, dim_hidden)]
-            layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers-num_enc_layers//2-1)])
+            layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers-num_enc_layers//2)])
             layers.extend([ISAB(dim_hidden, dim_hidden, num_heads, num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers//2)])
         self.encoder = nn.ModuleList(layers)
         
@@ -72,10 +72,10 @@ class Pooler(nn.Module):
 class Classifier(nn.Module):
     def __init__(self, dim_hidden=128, dim_outputs=20, num_dec_layers=4, dropout=0.2):
         super(Classifier, self).__init__()
-        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_dec_layers-1)]
+        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout) for _ in range(num_dec_layers-1)]
         layers.append(nn.Linear(dim_hidden, dim_outputs))
         self.classifier = nn.Sequential(*layers)
-       
+        
     def forward(self, x):
         # x: (batch, dim_hidden)
         return self.classifier(x)  # (batch, dim_output)
@@ -85,11 +85,18 @@ class Classifier(nn.Module):
 class Completer(nn.Module):
     def __init__(self, dim_hidden=128, num_items=6714, num_dec_layers=4, dropout=0.2):
         super(Completer, self).__init__()
-        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_dec_layers-1)]
-        layers.append(nn.Linear(dim_hidden, num_items))
+        layers = []
+        for _ in range(num_dec_layers//2):
+            layers.append(ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout))
+        layers.append(ResBlock(dim_hidden, dim_hidden, dim_hidden*2, norm='bn', dropout=dropout))
+        for _ in range(num_dec_layers//2-1):
+            layers.append(ResBlock(dim_hidden*2, dim_hidden*2, dim_hidden*2, norm='bn', dropout=dropout))
+        layers.append(nn.Linear(dim_hidden*2, num_items))
         self.decoder = nn.Sequential(*layers)
         
+        self.layers=layers
     def forward(self, x):
+        print(len(self.layers))
         return self.decoder(x)
 
 
