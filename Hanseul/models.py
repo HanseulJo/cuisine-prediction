@@ -85,13 +85,8 @@ class Classifier(nn.Module):
 class Completer(nn.Module):
     def __init__(self, dim_hidden=128, num_items=6714, num_dec_layers=4, dropout=0.2):
         super(Completer, self).__init__()
-        layers = []
-        for _ in range(num_dec_layers//2):
-            layers.append(ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout))
-        layers.append(ResBlock(dim_hidden, dim_hidden, dim_hidden*2, norm='bn', dropout=dropout))
-        for _ in range(num_dec_layers//2-1):
-            layers.append(ResBlock(dim_hidden*2, dim_hidden*2, dim_hidden*2, norm='bn', dropout=dropout))
-        layers.append(nn.Linear(dim_hidden*2, num_items))
+        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout) for _ in range(num_dec_layers-1)]
+        layers.append(nn.Linear(dim_hidden, num_items))
         self.decoder = nn.Sequential(*layers)
         
     def forward(self, x):

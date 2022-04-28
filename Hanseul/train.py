@@ -125,12 +125,12 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 if classify:
                     print('    *label_clf', labels_clf.cpu().numpy()[:12])
                     print('    *preds_clf', preds_clf.cpu().numpy()[:12])
-                    log_str += " Loss_clf {:.4f} | Acc_clf {:.4f}".format(
+                    log_str += " Loss_clf {:.4f} | Acc_clf {:.4f} |".format(
                         loss_clf.item(), accuracy_score(labels_clf.cpu().numpy(), preds_clf.cpu().numpy()))
                 if complete:
                     print('    >label_cpl', labels_cpl.cpu().numpy()[:12])
                     print('    >preds_cpl', preds_cpl.cpu().numpy()[:12])
-                    log_str += " Loss_cpl {:.4f} | Acc_cpl {:.4f}".format(
+                    log_str += " Loss_cpl {:.4f} | Acc_cpl {:.4f} |".format(
                         loss_cpl.item(), accuracy_score(labels_cpl.cpu().numpy(), preds_cpl.cpu().numpy()))
                 print(log_str)
 
