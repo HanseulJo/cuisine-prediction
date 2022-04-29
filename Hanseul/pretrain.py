@@ -151,6 +151,8 @@ def pretrain(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 patience_cnt = 0
         elif early_stop_patience is not None:
             patience_cnt += 1
+        if verbose:
+            print('best_loss', best_loss, f'(epoch {best_epoch}); total_loss', total_loss)
 
         if wandb_log:
             log_dict = {'learning_rate': optimizer.param_groups[0]['lr'],  # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
@@ -176,7 +178,7 @@ def pretrain(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
 
 
 def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_epochs=150, dropout=0.3,
-               dim_embedding=256, dim_hidden=256, num_heads=4,
+               dim_embedding=256, dim_hidden=256, num_heads=4, mask_prob=0.2,
                subset_length=None, num_enc_layers=3, loss='CrossEntropyLoss', optimizer_name='AdamW',
                lr=1e-3, weight_decay=0.01, step_size=10, step_factor=0.5, patience=30, seed=42,
                data_dir='./Container/', pretrained_model_path=None, wandb_log=False):
@@ -204,7 +206,12 @@ def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_ep
 
     # WandB
     if wandb_log:
-        wandb.init(project='Pretraining Encoder')
+        wandb.init(project='Pretraining Encoder',
+                   config=dict(encoder_mode=encoder_mode, batch_size=batch_size, n_epochs=n_epochs, dropout=dropout,
+                               dim_embedding=dim_embedding, dim_hidden=dim_hidden, num_heads=num_heads, mask_prob=mask_prob,
+                               num_enc_layers=num_enc_layers, loss=loss, optimizer_name=optimizer_name,
+                               lr=lr, weight_decay=weight_decay, step_size=step_size, step_factor=step_factor, patience=patience, seed=seed,
+                               pretrained_model_path=None, wandb_log=False))
 
     ## Get a batch of training data
     features_boolean, labels_one_hot, labels_int = next(iter(dataloaders['train']))
@@ -212,7 +219,7 @@ def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_ep
             features_boolean.size(), labels_one_hot.size(), labels_int.size()))
     
     model_ft = PretrainNet(dim_embedding=dim_embedding, dim_hidden=dim_hidden, num_items=features_boolean.size(-1),
-                           num_heads=num_heads, num_enc_layers=num_enc_layers, mask_prob=0.2, ln=True, dropout=dropout,
+                           num_heads=num_heads, num_enc_layers=num_enc_layers, mask_prob=mask_prob, ln=True, dropout=dropout,
                            encoder_mode=encoder_mode).to(device)
     if pretrained_model_path is not None:
         pretrained_dict = torch.load(pretrained_model_path)
@@ -263,4 +270,5 @@ if __name__ == '__main__':
                  lr=4e-4,
                  weight_decay=0.1,
                  dropout=0.1,
+                 mask_prob=0.2,
                  wandb_log=True)
