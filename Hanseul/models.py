@@ -17,7 +17,7 @@ class Encoder(nn.Module):
         self.mode = mode
         self.dropout = dropout
         self.padding_idx = num_items
-        self.embedding = nn.Embedding(num_embeddings=num_items+1, embedding_dim=dim_embedding, padding_idx=-1)
+        self.embedding = nn.Embedding(num_embeddings=num_items+1, embedding_dim=dim_embedding)
         if mode == 'FC':
             layers = [nn.Linear(dim_embedding, dim_hidden)]
             layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers)])
@@ -43,6 +43,7 @@ class Encoder(nn.Module):
                 self.out = module(self.out) # (batch, ?, dim_hidden)
         return self.out
 
+
 ## Pooler
 ## Given ingredient encoding matrix, compute recipe feature vectors
 class Pooler(nn.Module):
@@ -67,26 +68,13 @@ class Pooler(nn.Module):
             return self.out.view(x.size(0), -1)  # (batch, dim_hidden*num_outputs)
 
 
-
-## Classification Model
-class Classifier(nn.Module):
-    def __init__(self, dim_hidden=128, dim_outputs=20, num_dec_layers=4, dropout=0.2):
-        super(Classifier, self).__init__()
+## Decoder
+class Decoder(nn.Module):
+    def __init__(self, dim_hidden=128, dim_outputs=20, # 20 or 6714
+                 num_dec_layers=4, dropout=0.2):
+        super(Decoder, self).__init__()
         layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout) for _ in range(num_dec_layers-1)]
         layers.append(nn.Linear(dim_hidden, dim_outputs))
-        self.classifier = nn.Sequential(*layers)
-        
-    def forward(self, x):
-        # x: (batch, dim_hidden)
-        return self.classifier(x)  # (batch, dim_output)
-
-
-## Completion Model
-class Completer(nn.Module):
-    def __init__(self, dim_hidden=128, num_items=6714, num_dec_layers=4, dropout=0.2):
-        super(Completer, self).__init__()
-        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout) for _ in range(num_dec_layers-1)]
-        layers.append(nn.Linear(dim_hidden, num_items))
         self.decoder = nn.Sequential(*layers)
         
     def forward(self, x):
@@ -115,14 +103,14 @@ class CCNet(nn.Module):
                                ln=ln, dropout=dropout, mode=encoder_mode)
         if classify:
             self.pooler1 = Pooler(dim_hidden=dim_hidden, num_heads=num_heads, num_outputs=1, mode=pooler_mode)
-            self.classifier = Classifier(dim_hidden=dim_hidden, dim_outputs=dim_outputs, 
+            self.classifier = Decoder(dim_hidden=dim_hidden, dim_outputs=dim_outputs, 
                                          num_dec_layers=num_dec_layers, dropout=dropout)
             if freeze_classify:
                 for p in self.classifier.parameters():
                     p.requires_grad = False
         if complete:
             self.pooler2 = Pooler(dim_hidden=dim_hidden, num_heads=num_heads, num_outputs=num_outputs_cpl, mode=pooler_mode)
-            self.completer = Completer(dim_hidden=dim_hidden*num_outputs_cpl, num_items=num_items,
+            self.completer = Decoder(dim_hidden=dim_hidden*num_outputs_cpl, dim_outputs=num_items,
                                        num_dec_layers=num_dec_layers, dropout=dropout)
             if freeze_complete:
                 for p in self.completer.parameters():
