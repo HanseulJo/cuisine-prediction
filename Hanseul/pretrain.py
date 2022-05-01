@@ -12,13 +12,13 @@ import wandb
 
 from dataset import RecipeDataset
 from models import Encoder
-from utils import bin_to_int
+from utils import bin_to_int, get_variables
 from run import LOSSES, OPTIMIZERS, OPTIMIZERS_ARG 
 
 
 class PretrainNet(nn.Module):
     def __init__(self, dim_embedding=256, dim_hidden=128, num_items=6714, 
-                 num_inds=10, num_heads=4, num_enc_layers=2, mask_prob=0.2,
+                 num_inds=10, num_heads=4, num_enc_layers=2,
                  ln=True,          # LayerNorm option
                  dropout=0.5,      # Dropout option
                  encoder_mode = 'ATT'
@@ -28,44 +28,31 @@ class PretrainNet(nn.Module):
                                num_inds=num_inds, num_heads=num_heads, num_enc_layers=num_enc_layers,
                                ln=ln, dropout=dropout, mode=encoder_mode)
         self.ff = nn.Linear(dim_hidden, num_items)
-        self.mask_prob = mask_prob
         self.pad_idx = num_items
         
-    def forward(self, x):  # x: binary vectors.
-        int_x, pad_mask, token_mask, label = self.random_mask(x)
+    def forward(self, int_x, pad_mask, token_mask):  # x: binary vectors.
         out = self.encoder(int_x, mask=pad_mask.unsqueeze(1))  # (batch, ?, dim_hidden)
-        out = F.gelu(self.ff(out)).view(-1, self.pad_idx)[token_mask]
-        label = label[token_mask]
-        return out, label
-    
-    def random_mask(self, x):
-        int_x = bin_to_int(x)
-        label = int_x.clone().detach()
-        pad_mask = (int_x == self.pad_idx)
-        token_mask = (torch.rand(int_x.size()) < self.mask_prob).to(x.device) * (pad_mask == False)
-        feasible = ((pad_mask==False)*(token_mask==False)).sum(1) > 0
-        while not feasible.any() or not token_mask.any():
-            token_mask = (torch.rand(int_x.size()) < self.mask_prob).to(x.device) * (pad_mask == False)
-            feasible = ((pad_mask==False)*(token_mask==False)).sum(1) > 0
-        int_x, pad_mask, token_mask, label = int_x[feasible], pad_mask[feasible], token_mask[feasible], label[feasible]
-        how_pad = torch.rand(int_x.size()).to(x.device)
-        while not (token_mask * torch.logical_or(how_pad<0.8, how_pad>0.9)).any():
-            how_pad = torch.rand(int_x.size()).to(x.device)
-        int_x[token_mask * (how_pad<0.8)] = self.pad_idx
-        int_x[token_mask * (how_pad>0.9)] = torch.randint(self.pad_idx, int_x.size())[token_mask * (how_pad>0.9)].to(x.device)
-        return int_x, pad_mask, token_mask.view(-1), label.view(-1)
+        out = self.ff(out).view(-1, self.pad_idx)[token_mask]
+        return out
     
 
 def statistics_pretrain(model, criterion, phase, dataloaders, device, verbose=True):
     running_loss = running_acc = 0.
     data_num = 0
-    for idx, (feature_boolean, _, _) in enumerate(dataloaders[phase]):
+    for idx, (feature_boolean, _, label_int) in enumerate(dataloaders[phase]):
         feature_boolean = feature_boolean.to(device)
-        outputs, label = model(feature_boolean)
-        data_num += len(label)
-        running_loss += criterion(outputs, label).item() * len(label)
+        if 'train' in phase:
+            int_x, pad_mask, token_mask, label = get_variables(feature_boolean, random_remove=True, random_mask=False)
+        else:
+            label = label_int.to(device)
+            int_x, pad_mask, token_mask = get_variables(feature_boolean, random_remove=False)
+        batch_size = int_x.size(0)
+        
+        outputs = model(int_x, pad_mask, token_mask)
+        data_num += batch_size
+        running_loss += criterion(outputs, label).item() * batch_size
         _, preds = torch.max(outputs, 1)
-        #if verbose and idx == 0 and 'valid' in phase:
+        #if verbose and idx == 0:
         #    print('label', label.cpu().numpy()[:12])
         #    print('preds', preds.cpu().numpy()[:12])
         running_acc += accuracy_score(label.cpu().numpy(), preds.cpu().numpy(), normalize=False)
@@ -73,7 +60,7 @@ def statistics_pretrain(model, criterion, phase, dataloaders, device, verbose=Tr
     loss = float(running_loss / data_num)
     acc = float(running_acc / data_num)
     
-    return loss, acc, data_num
+    return loss, acc
 
 
 def pretrain(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
@@ -102,13 +89,14 @@ def pretrain(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         model.train()  # Set model to training mode
         
         for idx, (feature_boolean, _, _) in enumerate(dataloaders['train']):
-            batch_size, num_ingreds = feature_boolean.size()
             feature_boolean = feature_boolean.to(device)
-                
+            
+            int_x, pad_mask, token_mask, label = get_variables(feature_boolean, random_remove=True, random_mask=True)
+            
             optimizer.zero_grad()
 
             # forward
-            outputs, label = model(feature_boolean)
+            outputs = model(int_x, pad_mask, token_mask)
             
             loss = criterion(outputs, label)
             loss.backward()
@@ -125,39 +113,38 @@ def pretrain(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                     idx * 100 // len(dataloaders['train']), loss.item(), accuracy_score(label.cpu().numpy(), preds.cpu().numpy()))
                 print(log_str)
 
-        if wandb_log:
-            wandb.watch(model)
+        #if wandb_log:
+        #    wandb.watch(model)
             
         # statistics
         model.eval()
         with torch.set_grad_enabled(False):
-            train_loss, train_acc, train_num = statistics_pretrain(model, criterion, 'train_eval', dataloaders, device)
+            train_loss, train_acc = statistics_pretrain(model, criterion, 'train_eval', dataloaders, device)
             if verbose:
                 print(f"TRAIN Loss {train_loss:.4f} | Acc {train_acc:.4f}")
-            valid_loss, valid_acc, valid_num = statistics_pretrain(model, criterion, 'valid_clf', dataloaders, device)
+            valid_loss, valid_acc = statistics_pretrain(model, criterion, 'valid_cpl', dataloaders, device)
             if verbose:
                 print(f"VALID Loss {valid_loss:.4f} | Acc {valid_acc:.4f}")
-            total_loss = (train_loss * train_num + valid_loss * valid_num) / (train_num + valid_num)
-            total_acc = (train_acc * train_num + valid_acc * valid_num) / (train_num + valid_num)
 
-        scheduler.step(total_loss)
-        is_new_best = total_loss < best_loss
+        is_new_best = valid_acc > best_acc
         if is_new_best:
             best_epoch = epoch
-            best_loss = total_loss
-            best_acc = total_acc
+            best_loss = valid_loss
+            best_acc = valid_acc
             best_model_wts = deepcopy(model.state_dict()) # deep copy the model
             if early_stop_patience is not None:
                 patience_cnt = 0
         elif early_stop_patience is not None:
             patience_cnt += 1
         if verbose:
-            print('best_loss', best_loss, f'(epoch {best_epoch}); total_loss', total_loss)
+            print(f'best_valid_acc {best_acc:.4f} (epoch {best_epoch});')
 
         if wandb_log:
-            log_dict = {'learning_rate': optimizer.param_groups[0]['lr'],  # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
-                        'total_loss': total_loss, 'total_acc': total_acc}
+            log_dict = {'learning_rate': float(optimizer.param_groups[0]['lr']),  # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
+                        'valid_acc': float(valid_acc), 'valid_loss': float(valid_loss)}
             wandb.log(log_dict)
+        
+        scheduler.step(-valid_acc)  # update learning rate after logging
         
         if early_stop_patience is not None and patience_cnt > early_stop_patience:
             if verbose:
@@ -177,10 +164,10 @@ def pretrain(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     return model, best_epoch, best_loss, best_acc
 
 
-def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_epochs=150, dropout=0.3,
-               dim_embedding=256, dim_hidden=256, num_heads=4, mask_prob=0.2,
-               subset_length=None, num_enc_layers=3, loss='CrossEntropyLoss', optimizer_name='AdamW',
-               lr=1e-3, weight_decay=0.01, step_size=10, step_factor=0.5, patience=30, seed=42,
+def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_epochs=500, dropout=0.1,
+               dim_embedding=256, dim_hidden=256, num_heads=8,
+               subset_length=None, num_enc_layers=4, loss='CrossEntropyLoss', optimizer_name='AdamW',
+               lr=1e-3, weight_decay=0.01, step_size=20, step_factor=0.25, patience=40, seed=42,
                data_dir='./Container/', pretrained_model_path=None, wandb_log=False):
     
     np.random.seed(seed)
@@ -189,7 +176,7 @@ def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_ep
     torch.cuda.seed_all()
 
     # Datasets
-    dataset_names = ['train', 'valid_clf']
+    dataset_names = ['train', 'valid_cpl']
     recipe_datasets = {x: RecipeDataset(os.path.join(data_dir, x)) for x in dataset_names}
     subset_indices = {x: [i for i in range(len(recipe_datasets[x]) if subset_length is None else subset_length)
                           ] for x in dataset_names}
@@ -206,12 +193,11 @@ def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_ep
 
     # WandB
     if wandb_log:
-        wandb.init(project='Pretraining Encoder',
+        wandb.init(project='Pretraining Encoder by Completion',
                    config=dict(encoder_mode=encoder_mode, batch_size=batch_size, n_epochs=n_epochs, dropout=dropout,
-                               dim_embedding=dim_embedding, dim_hidden=dim_hidden, num_heads=num_heads, mask_prob=mask_prob,
+                               dim_embedding=dim_embedding, dim_hidden=dim_hidden, num_heads=num_heads,
                                num_enc_layers=num_enc_layers, loss=loss, optimizer_name=optimizer_name,
-                               lr=lr, weight_decay=weight_decay, step_size=step_size, step_factor=step_factor, patience=patience, seed=seed,
-                               pretrained_model_path=None, wandb_log=False))
+                               lr=lr, weight_decay=weight_decay, step_size=step_size, step_factor=step_factor, patience=patience, seed=seed,))
 
     ## Get a batch of training data
     features_boolean, labels_one_hot, labels_int = next(iter(dataloaders['train']))
@@ -219,12 +205,11 @@ def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_ep
             features_boolean.size(), labels_one_hot.size(), labels_int.size()))
     
     model_ft = PretrainNet(dim_embedding=dim_embedding, dim_hidden=dim_hidden, num_items=features_boolean.size(-1),
-                           num_heads=num_heads, num_enc_layers=num_enc_layers, mask_prob=mask_prob, ln=True, dropout=dropout,
+                           num_heads=num_heads, num_enc_layers=num_enc_layers, ln=True, dropout=dropout,
                            encoder_mode=encoder_mode).to(device)
     if pretrained_model_path is not None:
         pretrained_dict = torch.load(pretrained_model_path)
         model_dict = model_ft.state_dict()
-        
         # 1. filter out unnecessary keys
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
         # 2. overwrite entries in the existing state dict
@@ -249,6 +234,8 @@ def run_pretrain(encoder_mode='HYBRID', batch_size=64, batch_size_eval=256, n_ep
     except KeyboardInterrupt:
         if wandb_log:
             wandb.finish()
+        print("Finished by KeyboardInterrupt")
+        raise Exception
         
 
     fname = ['ckpt', 'Pretrain', f'bestEpoch{best_epoch}', f'loss{best_loss:.3f}', f'acc{best_acc:.3f}']

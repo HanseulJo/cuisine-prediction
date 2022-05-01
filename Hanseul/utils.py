@@ -27,3 +27,48 @@ def _concatenate(running_v, new_v):
     else:
         return new_v.clone().detach().cpu().numpy()
 
+
+def get_variables(x, pad_idx=None, random_remove=True, random_mask=False):
+    device = x.device
+    if pad_idx is None:
+        pad_idx = x.size(1)
+    
+    # remove an ingredient from each recipe.
+    if random_remove:
+        feasible = x.sum(1) > 1
+        int_x = bin_to_int(x[feasible])
+        batch_size = int_x.size(0)
+    
+        pad_mask = (int_x == pad_idx)
+
+        _rand = torch.rand(int_x.size()).to(device)
+        _rand[pad_mask] = -1
+        masked_ingred = torch.argmax(_rand, 1)
+
+        token_mask = torch.full(int_x.size(), False).to(device)
+        token_mask[torch.arange(batch_size), masked_ingred] = True
+
+        label = int_x[token_mask].clone().detach()
+        
+        if random_mask:
+            how_mask = torch.rand(int_x.size()).to(device)
+            int_x[token_mask * (how_mask<0.8)] = pad_idx
+            int_x[token_mask * (how_mask>0.9)] = torch.randint(pad_idx, int_x.size())[token_mask * (how_mask>0.9)].to(x.device)
+        else:
+            int_x[token_mask] = pad_idx
+        
+        return int_x, pad_mask, token_mask.view(-1), label
+
+    # add additional ingredient 'MASK' to each recipe.
+    else:
+        int_x = bin_to_int(x)
+        batch_size, num_ingreds = int_x.size()
+        int_x = torch.cat([int_x, torch.full((batch_size,1), pad_idx).to(device)], 1)
+    
+        pad_mask = int_x == pad_idx
+        pad_mask[:,-1] = False
+        
+        token_mask = torch.full((batch_size, num_ingreds+1), False).to(device)
+        token_mask[:, -1] = True
+
+        return int_x, pad_mask, token_mask.view(-1)
