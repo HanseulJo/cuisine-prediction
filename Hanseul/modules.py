@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 class ResBlock(nn.Module):
     """
-    (Norm - ReLU - Linear) * 2.
+    (Norm - GELU - Linear) * 2.
     Apply skip connection only when dim_input == dim_output.
     """
     def __init__(self, dim_input, dim_hidden, dim_output, norm='bn', dropout=0):
