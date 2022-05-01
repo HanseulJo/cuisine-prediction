@@ -29,12 +29,12 @@ class ResBlock(nn.Module):
         out = x
         if hasattr(self, 'norm1'):
             out = self.norm1(out)
-        out = self.fc1(F.relu(out))
+        out = self.fc1(F.gelu(out))
         if self.p > 0:
             out = F.dropout(out)
         if hasattr(self, 'norm2'):
             out = self.norm2(out)
-        out = self.fc2(F.relu(out))
+        out = self.fc2(F.gelu(out))
         if self.use_skip_conn:
             return out + x
         return out
@@ -56,7 +56,7 @@ class MAB(nn.Module):
             self.ln0 = nn.LayerNorm(dim_V)
             self.ln1 = nn.LayerNorm(dim_V)
         self.fc_att = nn.Linear(dim_V, dim_V)
-        self.fc_o = nn.Sequential(nn.Linear(dim_V, dim_V), nn.ReLU(), nn.Linear(dim_V, dim_V))
+        self.fc_o = nn.Sequential(nn.Linear(dim_V, dim_V), nn.GELU(), nn.Linear(dim_V, dim_V))
 
     def forward(self, Q, K, mask=None):
         Q = self.fc_q(Q)  # (batch, q_len, d_hid == dim_V)
