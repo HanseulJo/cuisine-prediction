@@ -89,11 +89,8 @@ class CCNet(nn.Module):
                  dropout=0.5,      # Dropout option
                  classify=True,    # completion만 하고 싶으면 False로
                  complete=True,    # classification만 하고 싶으면 False로
-                 freeze_classify=False, # classification만 관련된 parameter freeze
-                 freeze_complete=False,  # completion만 관련된 parameter freeze
-                 encoder_mode = 'FC',
+                 encoder_mode = 'HYBRID',
                  pooler_mode = 'ATT',
-                 #decoder_mode = 'FC',
                  ):
         super(CCNet, self).__init__()
         self.classify, self.complete = classify, complete
@@ -105,16 +102,10 @@ class CCNet(nn.Module):
             self.pooler1 = Pooler(dim_hidden=dim_hidden, num_heads=num_heads, num_outputs=1, mode=pooler_mode)
             self.classifier = Decoder(dim_hidden=dim_hidden, dim_outputs=dim_outputs, 
                                          num_dec_layers=num_dec_layers, dropout=dropout)
-            if freeze_classify:
-                for p in self.classifier.parameters():
-                    p.requires_grad = False
         if complete:
             self.pooler2 = Pooler(dim_hidden=dim_hidden, num_heads=num_heads, num_outputs=num_outputs_cpl, mode=pooler_mode)
             self.completer = Decoder(dim_hidden=dim_hidden*num_outputs_cpl, dim_outputs=num_items,
                                        num_dec_layers=num_dec_layers, dropout=dropout)
-            if freeze_complete:
-                for p in self.completer.parameters():
-                    p.requires_grad = False
     
     def forward(self, x):  # x: binary vectors.
         if not (self.classify or self.complete):
