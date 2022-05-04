@@ -50,6 +50,8 @@ def save_inference(recs, path):
 
 
 def run_inference(args):
+    assert args.classify or args.complete
+    
     # Datasets
     dataset_names = ['train', 'valid_clf', 'valid_cpl', 'test_clf', 'test_cpl']
     if args.datasets is None:
@@ -85,7 +87,7 @@ def run_inference(args):
     model_ft = CCNet(dim_embedding=args.dim_embedding, dim_hidden=args.dim_hidden,
                      dim_outputs=labels_one_hot.size(1), num_items=features_boolean.size(-1),
                      num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers,
-                     ln=True, dropout=args.dropout, classify=True, complete=True,
+                     ln=True, dropout=args.dropout,
                      encoder_mode=args.encoder_mode, pooler_mode=args.pooler_mode, cpl_scheme=args.cpl_scheme).to(device)
     if args.verbose:
         #print(model_ft)  # Model Info
@@ -112,16 +114,18 @@ def run_inference(args):
     
     model_ft.eval()
     with torch.set_grad_enabled(False):
-        for phase in ['train_eval','valid_clf', 'test_clf']:
-            recs = inference(model_ft, phase, dataloaders, device, k=10, idx_start_with=0)
-            fname.insert(2, phase)
-            fname = '_'.join(fname) + '.pickle'
-            save_inference(recs, os.path.join('./recs', fname))
-        for phase in ['valid_cpl', 'test_cpl']:
-            recs = inference(model_ft, phase, dataloaders, device, k=10, idx_start_with=1)  # idx start with 1
-            fname.insert(2, phase)
-            fname = '_'.join(fname) + '.pickle'
-            save_inference(recs, os.path.join('./recs', fname))
+        if args.classify:
+            for phase in ['train_eval','valid_clf', 'test_clf']:
+                recs = inference(model_ft, phase, dataloaders, device, k=10, idx_start_with=0)
+                fname.insert(2, phase)
+                fname = '_'.join(fname) + '.pickle'
+                save_inference(recs, os.path.join('./recs', fname))
+        if args.complete:
+            for phase in ['valid_cpl', 'test_cpl']:
+                recs = inference(model_ft, phase, dataloaders, device, k=10, idx_start_with=1)  # idx start with 1
+                fname.insert(2, phase)
+                fname = '_'.join(fname) + '.pickle'
+                save_inference(recs, os.path.join('./recs', fname))
 
 
 if __name__ == '__main__':
@@ -148,6 +152,8 @@ if __name__ == '__main__':
                         help='depth of decoder (number of Resblock/ISAB')
     parser.add_argument('-pt', '--pretrained_model_path', default=None, type=str,
                         help=f"path for pretrained model.")
+    parser.add_argument('-clf', '--classify', action='store_true')
+    parser.add_argument('-cpl', '--complete', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-ds', '--datasets', default=None)
 
