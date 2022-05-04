@@ -7,12 +7,12 @@ import torch.nn.functional as F
 
 class ResBlock(nn.Module):
     """
-    (Norm - GELU - Linear) * 2.
+    (Norm - GELU - Linear) - Dropout - (Norm - GELU - Linear).
     Apply skip connection only when dim_input == dim_output.
     """
-    def __init__(self, dim_input, dim_hidden, dim_output, norm='bn', dropout=0):
+    def __init__(self, dim_input, dim_hidden, dim_output, norm='bn', dropout=0, use_skip_conn=True):
         super(ResBlock, self).__init__()
-        self.use_skip_conn = (dim_input == dim_output)
+        self.use_skip_conn = use_skip_conn and (dim_input == dim_output)
 
         if norm == 'bn':
             norm_layer = nn.BatchNorm1d
@@ -68,11 +68,11 @@ class MAB(nn.Module):
         V_ = torch.cat(V.split(dim_split, 2), 0)  # (batch * num_heads, v_len, d_hid // num_heads)
         
         energy = Q_.bmm(K_.transpose(1,2))/math.sqrt(self.dim_V)  # (batch * num_heads, q_len, k_len)
-        if mask is not None:  # mask: (batch, 1, k_len)
-            energy.masked_fill_(mask.repeat(self.num_heads, 1, 1), float('-inf'))
-        A = torch.softmax(energy, 2)  # (batch * num_heads, q_len, k_len)
+        if mask is not None:  # mask: (batch, k_len)
+            energy.masked_fill_(mask.unsqueeze(1).repeat(self.num_heads, 1, 1), float('-inf'))
+        Att = torch.softmax(energy, 2)  # (batch * num_heads, q_len, k_len)
             
-        O = self.fc_att(torch.cat((A.bmm(V_)).split(Q.size(0), 0), 2))  # (batch, q_len, d_hid), Multihead Attention
+        O = self.fc_att(torch.cat((Att.bmm(V_)).split(Q.size(0), 0), 2))  # (batch, q_len, d_hid), Multihead Attention
         if self.p > 0: 
             O = F.dropout(O)  # Dropout
         O = O + Q  # Add 
@@ -99,13 +99,13 @@ class ISAB(nn.Module):
     """ Induced Self Attention Block (Set Transformers) """
     def __init__(self, dim_in, dim_out, num_heads, num_inds, ln=False, dropout=0.2):
         super(ISAB, self).__init__()
-        self.I = nn.Parameter(torch.Tensor(1, num_inds, dim_out))
-        nn.init.xavier_uniform_(self.I)
+        self.A = nn.Parameter(torch.Tensor(1, num_inds, dim_out))
+        nn.init.xavier_uniform_(self.A)
         self.mab0 = MAB(dim_out, dim_in, dim_out, num_heads, ln=ln, dropout=dropout)
         self.mab1 = MAB(dim_in, dim_out, dim_out, num_heads, ln=ln, dropout=dropout)
 
     def forward(self, X, mask=None):
-        H = self.mab0(self.I.repeat(X.size(0), 1, 1), X, mask=mask)
+        H = self.mab0(self.A.repeat(X.size(0), 1, 1), X, mask=mask)
         return self.mab1(X, H)
 
 
@@ -116,7 +116,8 @@ class PMA(nn.Module):
         self.S = nn.Parameter(torch.Tensor(1, num_seeds, dim))
         nn.init.xavier_uniform_(self.S)
         self.mab = MAB(dim, dim, dim, num_heads, ln=ln, dropout=dropout)
+        self.ff = nn.Sequential(nn.Linear(dim, dim), nn.GELU())
         
     def forward(self, X, mask=None):
-        return self.mab(self.S.repeat(X.size(0), 1, 1), X, mask=mask)
+        return self.mab(self.S.repeat(X.size(0), 1, 1), self.ff(X), mask=mask)
 

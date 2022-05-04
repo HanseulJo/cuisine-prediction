@@ -66,9 +66,9 @@ def main(args):
     if args.wandb_log:
         proj_name = ''
         if args.classify:
-            proj_name += 'Cuisine Classification' + (' + ' if args.complete else '')
+            proj_name += 'Cuisine_Classif. ' + ('+ ' if args.complete else '')
         if args.complete:
-            proj_name += 'Recipe Completion'
+            proj_name += 'Recipe_Complet. '
         wandb.init(project=proj_name, config=args)
         args = wandb.config
 
@@ -83,10 +83,11 @@ def main(args):
             features_boolean.size(), labels_one_hot.size(), labels_int.size()))
 
     model_ft = CCNet(dim_embedding=args.dim_embedding, dim_hidden=args.dim_hidden,
-                     dim_outputs=labels_one_hot.size(0), num_items=features_boolean.size(-1),
-                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers, num_outputs_cpl=args.num_outputs_cpl,
-                     ln=True, dropout=args.dropout, encoder_mode=args.encoder_mode, pooler_mode=args.pooler_mode, 
-                     classify=args.classify, complete=args.complete).to(device)
+                     dim_outputs=labels_one_hot.size(1), num_items=features_boolean.size(-1),
+                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers,
+                     ln=True, dropout=args.dropout, classify=args.classify, complete=args.complete,
+                     encoder_mode=args.encoder_mode, pooler_mode=args.pooler_mode, cpl_scheme=args.cpl_scheme).to(device)
+
     if args.pretrained_model_path is not None:
         pretrained_dict = torch.load(args.pretrained_model_path)
         model_dict = model_ft.state_dict()
@@ -118,7 +119,8 @@ def main(args):
         if args.wandb_log:
             wandb.finish()
         print("Finished by KeyboardInterupt")
-        return
+        raise Exception
+    
     fname = ['ckpt', 'CCNet']
     if args.classify:
         fname.append('cls')
@@ -130,69 +132,67 @@ def main(args):
         else:
             fname += [f"{k}{float(best[k]):.3f}"]
     fname += [f'bs{args.batch_size}',f'lr{args.lr}', f'seed{args.seed}',f'nEpochs{args.n_epochs}',]
-    fname += ['Encodee', args.encoder_mode, 'Pool', args.pooler_mode]
+    fname += ['Enc', args.encoder_mode, 'Pool', args.pooler_mode, 'Cpl', args.cpl_scheme]
     fname = '_'.join(fname) + '.pt'
     if not os.path.isdir('./weights/'):
         os.mkdir('./weights/')
     torch.save(model_ft.state_dict(), os.path.join('./weights/', fname))
     if args.wandb_log:
-        wandb.save(os.path.join('./weights/', 'ckpt*'))
+        wandb.save(os.path.join('./weights/', fname))
     wandb.finish()
     
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('-data', '--data_dir', default='./Container/', type=str,
+    parser.add_argument('-dir', '--data_dir', default='./Container/', type=str,
                         help='path to the dataset.')
     parser.add_argument('-bs', '--batch_size', default=64, type=int,
                         help='batch size for training.')
-    parser.add_argument('-bseval', '--batch_size_eval', default=2048, type=int,
+    parser.add_argument('-bsev', '--batch_size_eval', default=2048, type=int,
                         help='batch size for evaluation.')
-    parser.add_argument('-epochs', '--n_epochs', default=100, type=int,
+    parser.add_argument('-ep', '--n_epochs', default=100, type=int,
                         help='number of epochs for training.')
     parser.add_argument('-lr', '--lr', default=2e-4, type=float,
                         help='learning rate for training optimizer.')
     parser.add_argument('-l2', '--weight_decay', default=0.01, type=float,
                         help='l2 regularization for optimizer.')
-    parser.add_argument('-step', '--step_size', default=10, type=int,
+    parser.add_argument('-ss', '--step_size', default=10, type=int,
                         help='step size for learning rate scheduler.')
-    parser.add_argument('-factor', '--step_factor', default=0.1, type=float,
+    parser.add_argument('-sf', '--step_factor', default=0.1, type=float,
                         help='multiplicative factor for learning rate scheduler.')
-    parser.add_argument('-earlystop', '--early_stop_patience', default=20, type=int,
+    parser.add_argument('-es', '--early_stop_patience', default=20, type=int,
                         help='patience for early stopping.')
-    parser.add_argument('-seed', '--seed', default=42, type=int,
+    parser.add_argument('-s', '--seed', default=42, type=int,
                         help='random seed number.')
-    parser.add_argument('-subset', '--subset_length', default=None, type=int,
+    parser.add_argument('-sub', '--subset_length', default=None, type=int,
                         help='using a subset of dataset. how many?')
     parser.add_argument('-emb', '--dim_embedding', default=256, type=int,
                         help='embedding dimensinon.')
     parser.add_argument('-hid', '--dim_hidden', default=256, type=int,
                         help='hidden dimensinon.')
-    parser.add_argument('-drop', '--dropout', default=0.1, type=float,
+    parser.add_argument('-dr', '--dropout', default=0.1, type=float,
                         help='probability for dropout layers.')
-    parser.add_argument('-encmode', '--encoder_mode', default='HYBRID', type=str,
-                        help='encoder mode: "FC", "ATT", "HYBRID"')
-    parser.add_argument('-poolmode', '--pooler_mode', default='ATT', type=str,
-                        help='encoder pooler mode: "deepSets", "ATT"')
-    parser.add_argument('-noutcpl', '--num_outputs_cpl', default=1, type=int,
-                        help='') 
-    parser.add_argument('-numenc', '--num_enc_layers', default=4, type=int,
+    parser.add_argument('-em', '--encoder_mode', default='HYBRID', type=str,
+                        help='encoder mode: "FC", "ISA", "HYBRID"')
+    parser.add_argument('-pm', '--pooler_mode', default='PMA', type=str,
+                        help='encoder pooler mode: "SumPool", "PMA"')
+    parser.add_argument('-cs', '--cpl_scheme', default='pooled', type=str,
+                        help='completion scheme: (a)="pooled", (b)="endcoded"')
+    parser.add_argument('-ne', '--num_enc_layers', default=4, type=int,
                         help='depth of encoder (number of Resblock/ISAB')
-    parser.add_argument('-numdec', '--num_dec_layers', default=2, type=int,
+    parser.add_argument('-nd', '--num_dec_layers', default=2, type=int,
                         help='depth of decoder (number of Resblock/ISAB')
-    parser.add_argument('-loss', '--loss', default='ASLoss', type=str,
+    parser.add_argument('-lo', '--loss', default='ASLoss', type=str,
                         help=f"loss functions: {list(LOSSES.keys())}")
-    parser.add_argument('-opt', '--optimizer_name', default='AdamW', type=str,
+    parser.add_argument('-op', '--optimizer_name', default='AdamW', type=str,
                         help=f"optimizers: {list(OPTIMIZERS.keys())}")
-    parser.add_argument('-pretrained', '--pretrained_model_path', default=None, type=str,
+    parser.add_argument('-pt', '--pretrained_model_path', default=None, type=str,
                         help=f"path for pretrained model.")
     parser.add_argument('-cls', '--classify', action='store_true')
     parser.add_argument('-cmp', '--complete', action='store_true')
-    parser.add_argument('-fenc', '--freeze_encoder', action='store_true')
-    parser.add_argument('-logging', '--wandb_log', action='store_true')
+    parser.add_argument('-fe', '--freeze_encoder', action='store_true')
+    parser.add_argument('-log', '--wandb_log', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('-datasets', '--datasets', default=None)
-
-
+    parser.add_argument('-ds', '--datasets', default=None)
 
     main(parser.parse_args())
