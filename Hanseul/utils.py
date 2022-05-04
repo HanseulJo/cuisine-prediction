@@ -91,16 +91,13 @@ def get_variables(x, pad_idx=None,  complete=True, phase='train', cpl_scheme='po
                 how_mask = torch.rand(int_x.size()).to(device)
                 int_x[token_mask * (how_mask<0.8)] = pad_idx
                 int_x[token_mask * (how_mask>0.9)] = torch.randint(pad_idx, int_x.size())[token_mask * (how_mask>0.9)].to(x.device)
-                token_mask = token_mask.view(-1)  # flattened token_mask is used in the model.
 
             else:  # add additional [MASK] token to each recipe.
                 batch_size, num_ingreds = int_x.size()
                 int_x = torch.cat([int_x, torch.full((batch_size,1), pad_idx).to(device)], 1)
                 pad_mask = (int_x == pad_idx)
-                pad_mask = int_x == pad_idx
                 pad_mask[:,-1] = False
                 token_mask = torch.full((batch_size, num_ingreds+1), False).to(device)
                 token_mask[:, -1] = True
-                token_mask = token_mask.view(-1)  # flattened token_mask is used in the model.
 
     return int_x, feasible, pad_mask, token_mask, labels_cpl

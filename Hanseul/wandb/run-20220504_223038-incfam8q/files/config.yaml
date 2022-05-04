@@ -1,0 +1,118 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.12.15
+    framework: torch
+    is_jupyter_run: true
+    is_kaggle_kernel: false
+    python_version: 3.9.10
+    start_time: 1651671038
+    t:
+      1:
+      - 1
+      - 5
+      - 53
+      - 55
+      2:
+      - 1
+      - 5
+      - 53
+      - 55
+      3:
+      - 2
+      - 16
+      4: 3.9.10
+      5: 0.12.15
+      8:
+      - 1
+      - 4
+      - 5
+batch_size:
+  desc: null
+  value: 64
+batch_size_eval:
+  desc: null
+  value: 2048
+classify:
+  desc: null
+  value: true
+complete:
+  desc: null
+  value: true
+cpl_scheme:
+  desc: null
+  value: pooled
+data_dir:
+  desc: null
+  value: ./Container
+datasets:
+  desc: null
+  value: null
+dim_embedding:
+  desc: null
+  value: 256
+dim_hidden:
+  desc: null
+  value: 256
+dropout:
+  desc: null
+  value: 0.1
+early_stop_patience:
+  desc: null
+  value: 20
+encoder_mode:
+  desc: null
+  value: HYBRID
+freeze_classify:
+  desc: null
+  value: false
+freeze_complete:
+  desc: null
+  value: false
+loss:
+  desc: null
+  value: MultiClassASLoss
+lr:
+  desc: null
+  value: 0.0002
+n_epochs:
+  desc: null
+  value: 500
+num_dec_layers:
+  desc: null
+  value: 1
+num_enc_layers:
+  desc: null
+  value: 2
+optimizer_name:
+  desc: null
+  value: AdamW
+pooler_mode:
+  desc: null
+  value: PMA
+pretrained_model_path:
+  desc: null
+  value: null
+seed:
+  desc: null
+  value: 42
+step_factor:
+  desc: null
+  value: 0.5
+step_size:
+  desc: null
+  value: 10
+subset_length:
+  desc: null
+  value: null
+verbose:
+  desc: null
+  value: true
+wandb_log:
+  desc: null
+  value: true
+weight_decay:
+  desc: null
+  value: 0.01

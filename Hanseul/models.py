@@ -115,18 +115,21 @@ class CCNet(nn.Module):
 
         # Classification:
         if self.classify:
-            recipe_feature1 = self.pooler1(encoded_recipe, mask=pad_mask) 
+            _pad_mask = pad_mask.clone()
+            if self.complete and self.cpl_scheme == 'encoded':
+                _pad_mask[token_mask] = True  # additional masks
+            recipe_feature1 = self.pooler1(encoded_recipe, mask=_pad_mask) 
             logit_classification = self.classifier(recipe_feature1)  # (batch, dim_output)
             
         # Completion:
         if self.complete:
-            if hasattr(self, 'pooler2'):  # cpl_scheme == 'pooled'
+            if self.cpl_scheme == 'pooled' and hasattr(self, 'pooler2'):  # cpl_scheme == 'pooled'
                 recipe_feature2 = self.pooler2(encoded_recipe, mask=pad_mask)
                 logit_completion = self.completer(recipe_feature2)  # (batch, num_items)
-            else: # cpl_scheme == 'encoded'
+            elif self.cpl_scheme == 'encoded':
                 assert token_mask is not None, 'Is get_variables working?'
                 assert token_mask.sum() == x.size(0), 'Is there any size mismatch?'
-                encodings_to_predict = encoded_recipe.view(-1, self.dim_hidden)[token_mask]  # (batch, dim_hidden)
+                encodings_to_predict = encoded_recipe.view(-1, self.dim_hidden)[token_mask.view(-1)]  # (batch, dim_hidden)
                 logit_completion = self.completer(encodings_to_predict)  # (batch, num_items)
 
         return logit_classification, logit_completion

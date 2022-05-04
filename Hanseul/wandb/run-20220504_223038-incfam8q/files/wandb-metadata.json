@@ -1,0 +1,24 @@
+{
+    "os": "macOS-12.3.1-arm64-arm-64bit",
+    "python": "3.9.10",
+    "heartbeatAt": "2022-05-04T13:30:39.416438",
+    "startedAt": "2022-05-04T13:30:38.356215",
+    "docker": null,
+    "cpu_count": 8,
+    "cuda": null,
+    "args": [
+        "-f",
+        "/Users/hanseul_jo/Library/Jupyter/runtime/kernel-8e1f99b4-4e2d-40ff-96df-f0eef1e712ac.json"
+    ],
+    "state": "running",
+    "program": "Experiments-jvsc-8b26de8e-1e08-4782-9731-396d213c8e7a.ipynb",
+    "root": "/Users/hanseul_jo/Desktop/cuisine-prediction",
+    "git": {
+        "remote": "https://github.com/HanseulJo/cuisine-prediction.git",
+        "commit": "05f234946e9c4cb7161762ff0318aa3dacd6aed0"
+    },
+    "email": "jhs4015@kaist.ac.kr",
+    "host": "OptiML-macui-Macmini.local",
+    "username": "hanseul_jo",
+    "executable": "/opt/homebrew/opt/python@3.9/bin/python3.9"
+}
