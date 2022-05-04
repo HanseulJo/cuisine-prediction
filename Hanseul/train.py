@@ -67,11 +67,6 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     classify = model.classify
     complete = model.complete
     
-    np.random.seed(random_seed)
-    torch.random.manual_seed(random_seed)
-    torch.cuda.manual_seed(random_seed)
-    torch.cuda.seed_all()
-    
     since = time.time()
     
     # BEST MODEL SAVING

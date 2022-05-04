@@ -8,6 +8,7 @@ from torch.optim import lr_scheduler
 
 import wandb
 
+from utils import fix_seed
 from dataset import RecipeDataset
 from models import CCNet
 from loss import MultiClassASLoss, MultiClassFocalLoss
@@ -36,10 +37,7 @@ OPTIMIZERS_ARG = {
 
 def main(args):
     
-    np.random.seed(args.seed)
-    torch.random.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
-    torch.cuda.seed_all()
+    fix_seed(args.seed)
 
     # Datasets
     dataset_names = ['train', 'valid_clf', 'valid_cpl', 'test_clf', 'test_cpl']
@@ -166,7 +164,7 @@ if __name__ == '__main__':
                         help='l2 regularization for optimizer.')
     parser.add_argument('-ss', '--step_size', default=10, type=int,
                         help='step size for learning rate scheduler.')
-    parser.add_argument('-sf', '--step_factor', default=0.1, type=float,
+    parser.add_argument('-sf', '--step_factor', default=0.5, type=float,
                         help='multiplicative factor for learning rate scheduler.')
     parser.add_argument('-es', '--early_stop_patience', default=20, type=int,
                         help='patience for early stopping.')
@@ -196,7 +194,7 @@ if __name__ == '__main__':
                         help=f"optimizers: {list(OPTIMIZERS.keys())}")
     parser.add_argument('-pt', '--pretrained_model_path', default=None, type=str,
                         help=f"path for pretrained model.")
-    parser.add_argument('-clf', '--classify', action='store_true')
+    parser.add_argument('-cls', '--classify', action='store_true')
     parser.add_argument('-cmp', '--complete', action='store_true')
     parser.add_argument('-fe', '--freeze_encoder', action='store_true')
     parser.add_argument('-log', '--wandb_log', action='store_true')
@@ -204,3 +202,4 @@ if __name__ == '__main__':
     parser.add_argument('-ds', '--datasets', default=None)
 
     main(parser.parse_args())
+

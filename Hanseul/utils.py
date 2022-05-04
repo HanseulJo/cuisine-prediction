@@ -1,7 +1,20 @@
+import random, os
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+def fix_seed(seed=42):
+    random.seed(seed) # random
+    np.random.seed(seed) # numpy
+    os.environ["PYTHONHASHSEED"] = str(seed) # os
+    # pytorch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True 
+    torch.backends.cudnn.benchmark = False 
+    
 
 def bin_to_int(x, num_col=None):
     """
@@ -20,6 +33,7 @@ def bin_to_int(x, num_col=None):
     for i in range(batch_size):
         out[i][:x[i].sum().long()] = torch.arange(num_ingreds)[x[i]==1]
     return out
+
 
 def _concatenate(running_v, new_v):
     if running_v is not None:
