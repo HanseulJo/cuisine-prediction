@@ -126,14 +126,16 @@ def main(args):
         fname.append('cls')
     if args.complete:
         fname.append('cmp')
+    fname += ['Enc', args.encoder_mode, 'Pool', args.pooler_mode, 'Cpl', args.cpl_scheme]
+    fname += ['NumEnc', args.num_enc_layers, 'NumDec', args.num_dec_layers]
+    fname += [f'bs{args.batch_size}',f'lr{args.lr}', f'seed{args.seed}',f'nEpochs{args.n_epochs}']
     for k in best:
         if k == 'bestEpoch':
             fname.append(f'bestEpoch{int(best[k]):2d}')
         else:
             fname += [f"{k}{float(best[k]):.3f}"]
-    fname += [f'bs{args.batch_size}',f'lr{args.lr}', f'seed{args.seed}',f'nEpochs{args.n_epochs}',]
-    fname += ['Enc', args.encoder_mode, 'Pool', args.pooler_mode, 'Cpl', args.cpl_scheme]
     fname = '_'.join(fname) + '.pt'
+    
     if not os.path.isdir('./weights/'):
         os.mkdir('./weights/')
     torch.save(model_ft.state_dict(), os.path.join('./weights/', fname))

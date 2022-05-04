@@ -20,7 +20,7 @@ def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5,
     elif phase in ['valid_cpl']:
         model.classify = False
 
-    for idx, (feature_boolean, _, labels_int) in enumerate(dataloaders[phase]):
+    for feature_boolean, _, labels_int in dataloaders[phase]:
         feature_boolean = feature_boolean.to(device)
         int_x, feasible, pad_mask, token_mask, _ = get_variables(feature_boolean, complete=(phase=='valid_cpl'), phase=phase, cpl_scheme=model.cpl_scheme)
         labels_int = labels_int[feasible].to(device)
@@ -161,6 +161,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 patience_cnt = 0
         elif early_stop_patience is not None:
             patience_cnt += 1
+        print(f"current: {val_loss:.4f}, best: {best['clf']['Loss'] + best['cpl']['Loss']:.4f} (epoch{best['bestEpoch']}), patience_cnt {patience_cnt}")
 
         if wandb_log:
             log_dict = {'learning_rate': optimizer.param_groups[0]['lr']} # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
