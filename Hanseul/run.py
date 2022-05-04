@@ -112,35 +112,41 @@ def main(args):
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
 
     try:
-        model_ft, best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
-                               device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
-                               random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
+        best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
+                     device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
+                     random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
     except KeyboardInterrupt:
         if args.wandb_log:
             wandb.finish()
         print("Finished by KeyboardInterupt")
         raise Exception
     
-    fname = ['ckpt', 'CCNet']
-    if args.classify:
-        fname.append('cls')
-    if args.complete:
-        fname.append('cmp')
-    fname += ['Enc', args.encoder_mode, 'Pool', args.pooler_mode, 'Cpl', args.cpl_scheme]
-    fname += ['NumEnc', args.num_enc_layers, 'NumDec', args.num_dec_layers]
-    fname += [f'bs{args.batch_size}',f'lr{args.lr}', f'seed{args.seed}',f'nEpochs{args.n_epochs}']
-    for k in best:
-        if k == 'bestEpoch':
-            fname.append(f'bestEpoch{int(best[k]):2d}')
-        else:
-            fname += [f"{k}{float(best[k]):.3f}"]
-    fname = '_'.join(fname) + '.pt'
-    
+    ## save model
     if not os.path.isdir('./weights/'):
         os.mkdir('./weights/')
-    torch.save(model_ft.state_dict(), os.path.join('./weights/', fname))
-    if args.wandb_log:
-        wandb.save(os.path.join('./weights/', fname))
+    fname = ['ckpt', 'CCNet']
+    fname += ['Enc', args.encoder_mode, 'Pool', args.pooler_mode, 'Cpl', args.cpl_scheme]
+    fname += [f'NumEnc{args.num_enc_layers}', f'NumDec{args.num_dec_layers}']
+    fname += [f'bs{args.batch_size}',f'lr{args.lr}', f'seed{args.seed}',f'nEpochs{args.n_epochs}']
+    
+    def _save(name):
+        fname_ = fname.copy()
+        fname_.insert(2, name)
+        for k in best[name]:
+            if k == 'BestEpoch':
+                fname_.append(f"{k}{best[name][k]}")
+            elif k != 'Model':
+                fname_.append(f"{k}{best[name][k]:.3f}")
+        fname_ = '_'.join(fname_) + '.pt'
+        torch.save(best[name]['Model'], os.path.join('./weights/', fname_))
+        if args.wandb_log:
+            wandb.save(os.path.join('./weights/', fname_))
+    
+    if args.classify:
+        _save('clf')
+    if args.classify:
+        _save('cpl')
+
     wandb.finish()
     
 
@@ -190,7 +196,7 @@ if __name__ == '__main__':
                         help=f"optimizers: {list(OPTIMIZERS.keys())}")
     parser.add_argument('-pt', '--pretrained_model_path', default=None, type=str,
                         help=f"path for pretrained model.")
-    parser.add_argument('-cls', '--classify', action='store_true')
+    parser.add_argument('-clf', '--classify', action='store_true')
     parser.add_argument('-cmp', '--complete', action='store_true')
     parser.add_argument('-fe', '--freeze_encoder', action='store_true')
     parser.add_argument('-log', '--wandb_log', action='store_true')
