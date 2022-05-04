@@ -1,5 +1,6 @@
 import time
 from copy import deepcopy
+#from tqdm.notebook import tqdm
 from tqdm import tqdm
 import numpy as np
 import torch
@@ -7,46 +8,54 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score, top_k_accuracy_score, accuracy_score
 import wandb
 
-from utils import _concatenate
+from utils import _concatenate, get_variables
 
-def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5):
+def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5, verbose=True):
     running_loss = running_acc = running_top_k_acc = 0.
     running_labels = running_preds = None
+    
+    temp_classify, temp_complete = model.classify, model.complete
+    if phase in ['train_eval', 'valid_clf']:
+        model.complete = False
+    elif phase in ['valid_cpl']:
+        model.classify = False
+
     for idx, (feature_boolean, _, labels_int) in enumerate(dataloaders[phase]):
-        batch_size = feature_boolean.size(0)
         feature_boolean = feature_boolean.to(device)
-        labels_int = labels_int.to(device)
-        outputs_clf, outputs_cpl = model(feature_boolean)
+        int_x, feasible, pad_mask, token_mask, _ = get_variables(feature_boolean, complete=(phase=='valid_cpl'), phase=phase, cpl_scheme=model.cpl_scheme)
+        labels_int = labels_int[feasible].to(device)
+        batch_size = int_x.size(0)
+
+        outputs_clf, outputs_cpl = model(int_x, pad_mask, token_mask)
         if phase in ['train_eval', 'valid_clf']:
             _, preds = torch.max(outputs_clf, 1)
         elif phase in ['valid_cpl']:
             _, preds = torch.max(outputs_cpl, 1)
         
-        if idx == 0:
-            print('label', labels_int.cpu().numpy()[:10])
-            print('preds', preds.cpu().numpy()[:10])
+        #if verbose and idx == 0:
+        #    print('label', labels_int.cpu().numpy()[:10])
+        #    print('preds', preds.cpu().numpy()[:10])
         
         if phase in ['train_eval', 'valid_clf']:
             running_loss += criterion(outputs_clf, labels_int.long()) * batch_size
-            running_acc += accuracy_score(labels_int.cpu().numpy(), preds.cpu().numpy(), normalize=False)
             running_top_k_acc += top_k_accuracy_score(labels_int.cpu().numpy(), outputs_clf.cpu().numpy(), k=k, labels=np.arange(outputs_clf.size(1)), normalize=False)
-            running_labels = _concatenate(running_labels, labels_int)
-            running_preds = _concatenate(running_preds, preds)
         elif phase in ['valid_cpl']:
-            # labels_int -= 1
+            # labels_int -= 1  # if completion answer index starts from 1, uncomment this line.
             running_loss += criterion(outputs_cpl, labels_int.long()) * batch_size
-            running_acc += accuracy_score(labels_int.cpu().numpy(), preds.cpu().numpy(), normalize=False)
             running_top_k_acc += top_k_accuracy_score(labels_int.cpu().numpy(), outputs_cpl.cpu().numpy(), k=k, labels=np.arange(outputs_cpl.size(1)), normalize=False)
-            
+        running_acc += accuracy_score(labels_int.cpu().numpy(), preds.cpu().numpy(), normalize=False)
+        running_labels = _concatenate(running_labels, labels_int)
+        running_preds = _concatenate(running_preds, preds)
+    
+    model.classify, model.complete = temp_classify, temp_complete
+
     stat = dict(
         Loss = running_loss / dataset_sizes[phase],
         Acc = running_acc / dataset_sizes[phase],
-        Topk = running_top_k_acc / dataset_sizes[phase]
+        Topk = running_top_k_acc / dataset_sizes[phase],
+        F1macro = f1_score(running_labels, running_preds, average='macro'),
+        F1micro = f1_score(running_labels, running_preds, average='micro')
     )
-    if phase in ['train_eval', 'valid_clf']:
-        stat.update(dict(
-            F1macro = f1_score(running_labels, running_preds, average='macro'),
-            F1micro = f1_score(running_labels, running_preds, average='micro')))
     return stat
 
 
@@ -70,7 +79,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     if classify:
         best['clf'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1.)
     if complete:
-        best['cpl'] = dict(Loss=float('inf'), Acc=-1., Topk=-1.)
+        best['cpl'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1.)
     best_model_wts = deepcopy(model.state_dict())
 
     if early_stop_patience is not None:
@@ -83,30 +92,12 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         model.train()  # Set model to training mode
         
         for idx, (feature_boolean, _, labels_clf) in enumerate(dataloaders['train']):
-            
-            if complete:
-                # 재료가 1개인 recipe는 없앤다.
-                single_ingreds = feature_boolean.sum(1) > 1
-                feature_boolean = feature_boolean[single_ingreds]
-                labels_clf = labels_clf[single_ingreds]
-                batch_size, num_ingreds = feature_boolean.size()
-                # 재료 하나씩 없앤다.
-                labels_cpl = torch.zeros(batch_size).long()
-                for batch in range(batch_size):
-                    recipe = np.arange(num_ingreds)[feature_boolean[batch] == 1]
-                    removed_ingred = np.random.choice(recipe)
-                    feature_boolean[batch][removed_ingred] = 0
-                    labels_cpl[batch] = removed_ingred  # 없앤 재료 idx를 label로 학습
-                labels_cpl = labels_cpl.to(device)
-
             feature_boolean = feature_boolean.to(device)
-            labels_clf = labels_clf.to(device)
-             
+            int_x, feasible, pad_mask, token_mask, labels_cpl = get_variables(feature_boolean, complete=complete, phase='train', cpl_scheme=model.cpl_scheme)
+            labels_clf = labels_clf[feasible].to(device)
+
             optimizer.zero_grad()
-
-            # forward
-            outputs_clf, outputs_cpl = model(feature_boolean)
-
+            outputs_clf, outputs_cpl = model(int_x, pad_mask, token_mask)
             loss = 0.
             if classify:
                 _, preds_clf = torch.max(outputs_clf, 1)
@@ -123,38 +114,43 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
             if verbose and idx % 100 == 0:
                 log_str = f"    {idx * 100 // len(dataloaders['train']):3d}% | "
                 if classify:
-                    print('    *label_clf', labels_clf.cpu().numpy()[:12])
-                    print('    *preds_clf', preds_clf.cpu().numpy()[:12])
-                    log_str += " Loss_clf {:.4f} | Acc_clf {:.4f} |".format(
+                    if idx == 0:
+                        print('    *label_clf', labels_clf.cpu().numpy()[:12])
+                        print('    *preds_clf', preds_clf.cpu().numpy()[:12])
+                    log_str += "Loss_clf {:.4f} | Acc_clf {:.4f} | ".format(
                         loss_clf.item(), accuracy_score(labels_clf.cpu().numpy(), preds_clf.cpu().numpy()))
                 if complete:
-                    print('    >label_cpl', labels_cpl.cpu().numpy()[:12])
-                    print('    >preds_cpl', preds_cpl.cpu().numpy()[:12])
-                    log_str += " Loss_cpl {:.4f} | Acc_cpl {:.4f} |".format(
+                    if idx == 0:
+                        print('    >label_cpl', labels_cpl.cpu().numpy()[:10])
+                        print('    >preds_cpl', preds_cpl.cpu().numpy()[:10])
+                    log_str += "Loss_cpl {:.4f} | Acc_cpl {:.4f}".format(
                         loss_cpl.item(), accuracy_score(labels_cpl.cpu().numpy(), preds_cpl.cpu().numpy()))
                 print(log_str)
 
-        if wandb_log:
-            wandb.watch(model)
+        #if wandb_log:
+        #    wandb.watch(model)  # it sometimes take too much memory
             
         # statistics
         model.eval()
         with torch.set_grad_enabled(False):
+            val_loss, best_loss = 0., 0.
             if classify:
-                stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5)
+                stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
                 if verbose:
                     print("TRAIN_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_train.items()]))
-                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5)
+                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
+                val_loss += stat_valid_clf['Loss']
+                best_loss += best['clf']['Loss']
                 if verbose:
                     print("VALID_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_clf.items()]))
             if complete:
-                stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10)
+                stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10, verbose=verbose)
                 if verbose:
                     print("VALID_CPL", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_cpl.items()]))
+                val_loss += stat_valid_cpl['Loss']
+                best_loss += best['cpl']['Loss']
         
-        scheduler.step(-stat_valid_cpl['Acc'] if complete else -stat_valid_clf['Acc'])
-        is_new_best = stat_valid_cpl['Acc'] > best['cpl']['Acc'] if complete else stat_valid_clf['Acc'] > best['clf']['Acc']
-        if is_new_best:
+        if val_loss < best_loss:
             if classify:
                 best['clf'].update(stat_valid_clf)
             if complete:
@@ -173,7 +169,9 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 log_dict.update({'ValidClassify'+k: v for k, v in stat_valid_clf.items()})
             if complete:
                 log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_cpl.items()})
-            wandb.log(log_dict)              
+            wandb.log(log_dict)
+        
+        scheduler.step(val_loss)
         
         if early_stop_patience is not None and patience_cnt > early_stop_patience:
             if verbose:
