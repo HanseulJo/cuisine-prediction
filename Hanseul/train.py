@@ -20,7 +20,7 @@ def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5,
     elif phase in ['valid_cpl']:
         model.classify = False
 
-    for idx, (feature_boolean, _, labels_int) in enumerate(dataloaders[phase]):
+    for feature_boolean, _, labels_int in dataloaders[phase]:
         feature_boolean = feature_boolean.to(device)
         int_x, feasible, pad_mask, token_mask, _ = get_variables(feature_boolean, complete=(phase=='valid_cpl'), phase=phase, cpl_scheme=model.cpl_scheme)
         labels_int = labels_int[feasible].to(device)
@@ -77,10 +77,9 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     # BEST MODEL SAVING
     best = {}
     if classify:
-        best['clf'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1.)
+        best['clf'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1., Model=deepcopy(model.state_dict()))
     if complete:
-        best['cpl'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1.)
-    best_model_wts = deepcopy(model.state_dict())
+        best['cpl'] = dict(Loss=float('inf'), Acc=-1., Topk=-1., F1macro=-1., F1micro=-1., Model=deepcopy(model.state_dict()))
 
     if early_stop_patience is not None:
         patience_cnt = 0
@@ -133,34 +132,39 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         # statistics
         model.eval()
         with torch.set_grad_enabled(False):
-            val_loss, best_loss = 0., 0.
+            val_loss = 0.
             if classify:
                 stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
                 if verbose:
                     print("TRAIN_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_train.items()]))
                 stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
-                val_loss += stat_valid_clf['Loss']
-                best_loss += best['clf']['Loss']
                 if verbose:
                     print("VALID_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_clf.items()]))
+                val_loss += stat_valid_clf['Loss']
             if complete:
                 stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10, verbose=verbose)
                 if verbose:
                     print("VALID_CPL", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_cpl.items()]))
                 val_loss += stat_valid_cpl['Loss']
-                best_loss += best['cpl']['Loss']
         
-        if val_loss < best_loss:
-            if classify:
+        patience_add = True
+        if classify:
+            if stat_valid_clf['Acc'] > best['clf']['Acc']:
                 best['clf'].update(stat_valid_clf)
-            if complete:
+                best['clf']['BestEpoch'] = int(epoch)
+                best['clf']['Model'] = deepcopy(model.state_dict()) # deep copy the model
+                if early_stop_patience is not None:
+                    patience_cnt, patience_add = 0, False
+        if complete:
+            if stat_valid_cpl['Acc'] > best['cpl']['Acc']:
                 best['cpl'].update(stat_valid_cpl)
-            best['bestEpoch'] = int(epoch)
-            best_model_wts = deepcopy(model.state_dict()) # deep copy the model
-            if early_stop_patience is not None:
-                patience_cnt = 0
-        elif early_stop_patience is not None:
+                best['cpl']['BestEpoch'] = int(epoch)
+                best['cpl']['Model'] = deepcopy(model.state_dict()) # deep copy the model
+                if early_stop_patience is not None:
+                    patience_cnt, patience_add = 0, False
+        if early_stop_patience is not None and patience_add:
             patience_cnt += 1
+        print("patience_cnt", patience_cnt)
 
         if wandb_log:
             log_dict = {'learning_rate': optimizer.param_groups[0]['lr']} # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
@@ -171,7 +175,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_cpl.items()})
             wandb.log(log_dict)
         
-        scheduler.step(val_loss)
+        scheduler.step(val_loss)  # loss sum
         
         if early_stop_patience is not None and patience_cnt > early_stop_patience:
             if verbose:
@@ -184,16 +188,10 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
 
     print('==== Best Result ====')
     for k in best:
-        if k == 'bestEpoch':
-            print(f"{k}: {int(best[k])}")
-        else:
-            for k1 in best[k]:
+        for k1 in best[k]:
+            if k1 == 'BestEpoch':
+                print(f"{k}_{k1}: {best[k][k1]}")
+            elif k1 != 'Model':
                 print(f"{k}_{k1}: {float(best[k][k1]):.8f}")
-    # load best model weights
-    model.load_state_dict(best_model_wts)
-    best_out = {'bestEpoch': best['bestEpoch']}
-    if classify:
-        best_out.update({'Clf'+k: v for k, v in stat_valid_clf.items()})
-    if complete:
-        best_out.update({'Cpl'+k: v for k, v in stat_valid_cpl.items()})
-    return model, best_out
+
+    return best
