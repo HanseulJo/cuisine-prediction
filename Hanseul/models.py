@@ -71,7 +71,7 @@ class Decoder(nn.Module):
     def __init__(self, dim_hidden=128, dim_outputs=20, # 20 (cuisines) or 6714 (ingredients)
                  num_dec_layers=4, dropout=0.2):
         super(Decoder, self).__init__()
-        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout, use_skip_conn=False) for _ in range(num_dec_layers)]
+        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout) for _ in range(num_dec_layers)]
         layers.append(nn.Linear(dim_hidden, dim_outputs))
         self.decoder = nn.Sequential(*layers)
         
@@ -118,6 +118,7 @@ class CCNet(nn.Module):
             _pad_mask = pad_mask.clone()
             if self.complete and self.cpl_scheme == 'encoded':
                 _pad_mask[token_mask] = True  # additional masks
+                assert _pad_mask.sum()-pad_mask.sum() == x.size(0)
             recipe_feature1 = self.pooler1(encoded_recipe, mask=_pad_mask) 
             logit_classification = self.classifier(recipe_feature1)  # (batch, dim_output)
             

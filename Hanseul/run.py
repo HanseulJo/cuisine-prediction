@@ -62,11 +62,7 @@ def main(args):
     
     # WandB
     if args.wandb_log:
-        proj_name = ''
-        if args.classify:
-            proj_name += 'Cuisine_Classif. ' + ('+ ' if args.complete else '')
-        if args.complete:
-            proj_name += 'Recipe_Complet. '
+        proj_name = 'Cuisine_Classif. & Recipe_Complet. '
         wandb.init(project=proj_name, config=args)
         args = wandb.config
 
@@ -90,9 +86,9 @@ def main(args):
         pretrained_dict = torch.load(args.pretrained_model_path)
         model_dict = model_ft.state_dict()
         # 1. filter out unnecessary keys
-        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if 'encoder' in k and k in model_dict}
         # 2. overwrite entries in the existing state dict
-        model_dict.update(pretrained_dict) 
+        model_dict.update(pretrained_dict)
         # 3. load the new state dict
         model_ft.load_state_dict(model_dict)
         if args.freeze_encoder:
@@ -142,7 +138,7 @@ def main(args):
     
     if args.classify:
         _save('clf')
-    if args.classify:
+    if args.complete:
         _save('cpl')
 
     wandb.finish()

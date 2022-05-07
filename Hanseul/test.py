@@ -108,24 +108,24 @@ def run_inference(args):
 
     fname = ['rec','CCNet']
     fname += ['Enc', args.encoder_mode, 'Pool', args.pooler_mode, 'Cpl', args.cpl_scheme]
-    fname += ['NumEnc', args.num_enc_layers, 'NumDec', args.num_dec_layers]
+    fname += [f'NumEnc{args.num_enc_layers}', f'NumDec{args.num_dec_layers}']
     if not os.path.isdir('./recs/'):
-        os.mkdir('./recs/')
+        os.mkdir('./recs/')    
     
     model_ft.eval()
     with torch.set_grad_enabled(False):
+        phases = []
         if args.classify:
-            for phase in ['train_eval','valid_clf', 'test_clf']:
-                recs = inference(model_ft, phase, dataloaders, device, k=10, idx_start_with=0)
-                fname.insert(2, phase)
-                fname = '_'.join(fname) + '.pickle'
-                save_inference(recs, os.path.join('./recs', fname))
+            phases.extend(['train_eval','valid_clf', 'test_clf'])
         if args.complete:
-            for phase in ['valid_cpl', 'test_cpl']:
-                recs = inference(model_ft, phase, dataloaders, device, k=10, idx_start_with=1)  # idx start with 1
-                fname.insert(2, phase)
-                fname = '_'.join(fname) + '.pickle'
-                save_inference(recs, os.path.join('./recs', fname))
+            phases.extend(['valid_cpl', 'test_cpl'])
+
+        for phase in phases:
+            recs = inference(model_ft, phase, dataloaders, device, k=10, idx_start_with=0)
+            fname_ = fname[:]
+            fname_.insert(2, phase)
+            fname_ = '_'.join(fname_) + '.pickle'
+            save_inference(recs, os.path.join('./recs', fname_))
 
 
 if __name__ == '__main__':
