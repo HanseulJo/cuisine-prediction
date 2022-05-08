@@ -11,7 +11,7 @@ def get_same_ingred(data_path='../', save_path='./container', save=True):
     with open(os.path.join(data_path, 'node_ingredient.txt'), 'rb') as fr:
         for i, line in enumerate(fr):
             ingred = line.strip()
-            ingred_dict[ingred].append(i + 1)
+            ingred_dict[ingred].append(i)
             ingred_lst.append(ingred)
 
     if save:

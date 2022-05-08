@@ -30,8 +30,8 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
         temp_lst = line.strip().split(",")
         for ingred_id in temp_lst[:-1]:
             if rm_same:
-                ingred_id = ingred_dict[ingred_lst[int(ingred_id) - 1]][0]
-            feature[int(ingred_id)-1] = 1
+                ingred_id = ingred_dict[ingred_lst[int(ingred_id)]][0]
+            feature[int(ingred_id)] = 1
         features.append(feature)
         labels.append(cuisine_dict[temp_lst[-1]])
 
@@ -70,8 +70,8 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
         temp_lst = line.strip().split(",")
         for ingred_id in temp_lst:
             if rm_same:
-                ingred_id = ingred_dict[ingred_lst[int(ingred_id) - 1]][0]
-            feature[int(ingred_id) - 1] = 1
+                ingred_id = ingred_dict[ingred_lst[int(ingred_id)]][0]
+            feature[int(ingred_id)] = 1
         features.append(feature)
 
     h5f.create_dataset('features_boolean', data=features, compression="gzip")
@@ -88,10 +88,10 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
         temp_lst = line.strip().split(",")
         for ingred_id in temp_lst:
             if rm_same:
-                ingred_id = ingred_dict[ingred_lst[int(ingred_id) - 1]][0]
-            if features[i][int(ingred_id) - 1] == 0:
+                ingred_id = ingred_dict[ingred_lst[int(ingred_id)]][0]
+            if features[i][int(ingred_id)] == 0:
                 labels.append(ingred_id)
-                feature[int(ingred_id) - 1] = 1
+                feature[int(ingred_id)] = 1
                 break
         features_temp.append(feature)
 
@@ -119,8 +119,8 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
         temp_lst = line.strip().split(",")
         for ingred in temp_lst:
             if rm_same:
-                ingred = ingred_dict[ingred_lst[int(ingred) - 1]][0]
-            feature[int(ingred) - 1] = 1
+                ingred = ingred_dict[ingred_lst[int(ingred)]][0]
+            feature[int(ingred)] = 1
         features.append(feature)
 
     h5f.create_dataset('features_boolean', data=features, compression="gzip")
@@ -167,8 +167,8 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
         temp_lst = line.strip().split(",")
         for ingred in temp_lst:
             if rm_same:
-                ingred = ingred_dict[ingred_lst[int(ingred) - 1]][0]
-            feature[int(ingred) - 1] = 1
+                ingred = ingred_dict[ingred_lst[int(ingred)]][0]
+            feature[int(ingred)] = 1
         features.append(feature)
 
     h5f.create_dataset('features_boolean', data=features, compression="gzip")
@@ -192,8 +192,8 @@ def embedding(data_path="../", save_path="./container", rm_same=False):
         temp_lst = line.strip().split(",")
         for ingred in temp_lst:
             if rm_same:
-                ingred = ingred_dict[ingred_lst[int(ingred) - 1]][0]
-            feature[int(ingred) - 1] = 1
+                ingred = ingred_dict[ingred_lst[int(ingred)]][0]
+            feature[int(ingred)] = 1
         features.append(feature)
 
     h5f.create_dataset('features_boolean', data=features, compression="gzip")
