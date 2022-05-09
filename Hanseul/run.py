@@ -66,7 +66,7 @@ def main(args):
         wandb.init(project=proj_name, config=args)
         args = wandb.config
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu" if not torch.cuda.is_available() else ("cuda" if not hasattr(args, 'gpu') else f"cuda:{args.gpu}"))
     if args.verbose:
         print('device: ', device)
 
@@ -78,7 +78,7 @@ def main(args):
 
     model_ft = CCNet(dim_embedding=args.dim_embedding, dim_hidden=args.dim_hidden,
                      dim_outputs=labels_one_hot.size(1), num_items=features_boolean.size(-1),
-                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers,
+                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers, num_inds=args.num_inds,
                      ln=True, dropout=args.dropout, classify=args.classify, complete=args.complete,
                      encoder_mode=args.encoder_mode, pooler_mode=args.pooler_mode, cpl_scheme=args.cpl_scheme).to(device)
 
@@ -172,6 +172,8 @@ if __name__ == '__main__':
                         help='embedding dimensinon.')
     parser.add_argument('-hid', '--dim_hidden', default=256, type=int,
                         help='hidden dimensinon.')
+    parser.add_argument('-ind', '--num_inds', default=10, type=int,
+                        help='hyperparam for ISA')
     parser.add_argument('-dr', '--dropout', default=0.1, type=float,
                         help='probability for dropout layers.')
     parser.add_argument('-em', '--encoder_mode', default='HYBRID', type=str,
@@ -196,6 +198,7 @@ if __name__ == '__main__':
     parser.add_argument('-log', '--wandb_log', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-ds', '--datasets', default=None)
+    parser.add_argument('-g', '--gpu', default=0, type=int)
 
     main(parser.parse_args())
 

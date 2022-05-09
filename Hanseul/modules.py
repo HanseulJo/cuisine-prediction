@@ -10,7 +10,7 @@ class ResBlock(nn.Module):
     (Norm - GELU - Linear) - Dropout - (Norm - GELU - Linear).
     Apply skip connection only when dim_input == dim_output.
     """
-    def __init__(self, dim_input, dim_hidden, dim_output, norm='bn', dropout=0, use_skip_conn=True):
+    def __init__(self, dim_input, dim_hidden, dim_output, norm='bn', dropout=0., use_skip_conn=True):
         super(ResBlock, self).__init__()
         self.use_skip_conn = use_skip_conn and (dim_input == dim_output)
 
@@ -44,7 +44,7 @@ class ResBlock(nn.Module):
 
 class MAB(nn.Module):
     """ Multi-head Attention + FeedForward """
-    def __init__(self, dim_Q, dim_K, dim_V, num_heads, ln=False, dropout=0):
+    def __init__(self, dim_Q, dim_K, dim_V, num_heads, ln=True, dropout=0., **kwargs):
         super(MAB, self).__init__()
         self.dim_V = dim_V
         self.num_heads = num_heads
@@ -87,7 +87,7 @@ class MAB(nn.Module):
 
 class SAB(nn.Module):
     """ Self Attention Block """
-    def __init__(self, dim_in, dim_out, num_heads, ln=False, dropout=0.2):
+    def __init__(self, dim_in, dim_out, num_heads, ln=True, dropout=0., **kwargs):
         super(SAB, self).__init__()
         self.mab = MAB(dim_in, dim_in, dim_out, num_heads, ln=ln, dropout=dropout)
 
@@ -97,7 +97,7 @@ class SAB(nn.Module):
 
 class ISAB(nn.Module):
     """ Induced Self Attention Block (Set Transformers) """
-    def __init__(self, dim_in, dim_out, num_heads, num_inds, ln=False, dropout=0.2):
+    def __init__(self, dim_in, dim_out, num_heads, num_inds, ln=True, dropout=0., **kwargs):
         super(ISAB, self).__init__()
         self.A = nn.Parameter(torch.Tensor(1, num_inds, dim_out))
         nn.init.xavier_uniform_(self.A)
@@ -111,7 +111,7 @@ class ISAB(nn.Module):
 
 class PMA(nn.Module):
     """ Pooling by Multi-head Attention (Set Transformers) """
-    def __init__(self, dim, num_heads, num_seeds, ln=False, dropout=0.2):
+    def __init__(self, dim, num_heads, num_seeds, ln=True, dropout=0., **kwargs):
         super(PMA, self).__init__()
         self.S = nn.Parameter(torch.Tensor(1, num_seeds, dim))
         nn.init.xavier_uniform_(self.S)
