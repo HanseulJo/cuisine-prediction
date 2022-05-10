@@ -31,7 +31,7 @@ class ResBlock(nn.Module):
             out = self.norm1(out)
         out = self.fc1(F.gelu(out))
         if self.p > 0:
-            out = F.dropout(out)
+            out = F.dropout(out, p=self.p)
         if hasattr(self, 'norm2'):
             out = self.norm2(out)
         out = self.fc2(F.gelu(out))
@@ -74,12 +74,12 @@ class MAB(nn.Module):
             
         O = self.fc_att(torch.cat((Att.bmm(V_)).split(Q.size(0), 0), 2))  # (batch, q_len, d_hid), Multihead Attention
         if self.p > 0: 
-            O = F.dropout(O)  # Dropout
+            O = F.dropout(O, p=self.p)  # Dropout
         O = O + Q  # Add 
         O = O if getattr(self, 'ln0', None) is None else self.ln0(O)  # normalize
         _O = self.fc_o(O)  # FF
         if self.p > 0:
-            _O = F.dropout(_O)  # Dropout
+            _O = F.dropout(_O, p=self.p)  # Dropout
         O = O + _O # Add
         O = O if getattr(self, 'ln1', None) is None else self.ln1(O)  # normalize
         return O
