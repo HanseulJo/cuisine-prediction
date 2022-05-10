@@ -4,6 +4,7 @@ from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
 import torch
+from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score, top_k_accuracy_score, accuracy_score
 import wandb
@@ -20,7 +21,7 @@ def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5,
     elif phase in ['valid_cpl']:
         model.classify = False
 
-    for feature_boolean, _, labels_int in dataloaders[phase]:
+    for idx, (feature_boolean, _, labels_int) in enumerate(dataloaders[phase]):
         feature_boolean = feature_boolean.to(device)
         int_x, feasible, pad_mask, token_mask, _ = get_variables(feature_boolean, complete=(phase=='valid_cpl'), phase=phase, cpl_scheme=model.cpl_scheme)
         labels_int = labels_int[feasible].to(device)
@@ -40,7 +41,6 @@ def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5,
             running_loss += criterion(outputs_clf, labels_int.long()) * batch_size
             running_top_k_acc += top_k_accuracy_score(labels_int.cpu().numpy(), outputs_clf.cpu().numpy(), k=k, labels=np.arange(outputs_clf.size(1)), normalize=False)
         elif phase in ['valid_cpl']:
-            # labels_int -= 1  # if completion answer index starts from 1, uncomment this line.
             running_loss += criterion(outputs_cpl, labels_int.long()) * batch_size
             running_top_k_acc += top_k_accuracy_score(labels_int.cpu().numpy(), outputs_cpl.cpu().numpy(), k=k, labels=np.arange(outputs_cpl.size(1)), normalize=False)
         running_acc += accuracy_score(labels_int.cpu().numpy(), preds.cpu().numpy(), normalize=False)
@@ -66,11 +66,6 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     
     classify = model.classify
     complete = model.complete
-    
-    np.random.seed(random_seed)
-    torch.random.manual_seed(random_seed)
-    torch.cuda.manual_seed(random_seed)
-    torch.cuda.seed_all()
     
     since = time.time()
     
@@ -132,7 +127,6 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         # statistics
         model.eval()
         with torch.set_grad_enabled(False):
-            val_loss = 0.
             if classify:
                 stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
                 if verbose:
@@ -140,12 +134,13 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
                 if verbose:
                     print("VALID_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_clf.items()]))
-                val_loss += stat_valid_clf['Loss']
+                scheduler_criterion = float(stat_valid_clf['Loss'])
             if complete:
                 stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10, verbose=verbose)
                 if verbose:
                     print("VALID_CPL", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_cpl.items()]))
-                val_loss += stat_valid_cpl['Loss']
+                if not classify:
+                    scheduler_criterion = float(stat_valid_cpl['Loss'])
         
         patience_add = True
         if classify:
@@ -162,12 +157,17 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 best['cpl']['Model'] = deepcopy(model.state_dict()) # deep copy the model
                 if early_stop_patience is not None:
                     patience_cnt, patience_add = 0, False
-        if early_stop_patience is not None and patience_add:
-            patience_cnt += 1
-        print("patience_cnt", patience_cnt)
+        if early_stop_patience is not None:
+            if patience_add:
+                patience_cnt += 1
+            print("patience_cnt", patience_cnt)
 
         if wandb_log:
-            log_dict = {'learning_rate': optimizer.param_groups[0]['lr']} # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
+            if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
+                log_dict = {'learning_rate': optimizer.param_groups[0]['lr']}   # for ReduceOnPlateau
+            else:
+                log_dict = {'learning_rate': scheduler.get_last_lr()[0]}        # for other schedulers
+            
             if classify:
                 log_dict.update({'TrainClassify'+k: v for k, v in stat_train.items()})
                 log_dict.update({'ValidClassify'+k: v for k, v in stat_valid_clf.items()})
@@ -175,8 +175,11 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_cpl.items()})
             wandb.log(log_dict)
         
-        scheduler.step(val_loss)  # loss sum
-        
+        if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
+            scheduler.step(scheduler_criterion)  # validation completion loss if we do completion, else classification loss
+        else:
+            scheduler.step()
+
         if early_stop_patience is not None and patience_cnt > early_stop_patience:
             if verbose:
                 print(f'Early stop at epoch {epoch}.')
@@ -185,7 +188,13 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     time_elapsed = time.time() - since
     if verbose:
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-
+    
+    if wandb_log:
+        if classify:
+            wandb.config.update({'ValidClassify'+k: v for k, v in best['clf'].items() if k != 'Model'})
+        if complete:
+            wandb.config.update({'ValidComplete'+k: v for k, v in best['cpl'].items() if k != 'Model'})
+    
     print('==== Best Result ====')
     for k in best:
         for k1 in best[k]:

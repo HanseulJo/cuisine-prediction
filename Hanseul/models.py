@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from utils import bin_to_int
-from modules import ResBlock, ISAB, PMA
+from modules import ResBlock, SAB, ISAB, PMA
 
 ## Encoder.
 ## Given recipes (in integers), compute encoding matrix of ingredients for each recipe.  
@@ -13,7 +13,7 @@ class Encoder(nn.Module):
                  num_enc_layers=4, ln=True, dropout=0.2,
                  mode='HYBRID'):
         super(Encoder, self).__init__()
-        assert mode in ['FC', 'ISA', 'HYBRID']
+        assert mode in ['FC', 'SA', 'ISA', 'HYBRID', 'HYBRID_SA']
         self.mode = mode
         self.dropout = dropout
         self.padding_idx = num_items
@@ -21,11 +21,16 @@ class Encoder(nn.Module):
         layers = [nn.Linear(dim_embedding, dim_hidden)]
         if mode == 'FC':
             layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers)])
+        elif mode == 'SA':
+            layers.extend([SAB(dim_hidden, dim_hidden, num_heads, ln=ln, dropout=dropout) for _ in range(num_enc_layers)])
         elif mode == 'ISA':
-            layers.extend([ISAB(dim_hidden, dim_hidden, num_heads, num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers)])
+            layers.extend([ISAB(dim_hidden, dim_hidden, num_heads, num_inds=num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers)])
         elif mode == 'HYBRID':  # FC + ISA
             layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers-num_enc_layers//2)])
-            layers.extend([ISAB(dim_hidden, dim_hidden, num_heads, num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers//2)])
+            layers.extend([ISAB(dim_hidden, dim_hidden, num_heads, num_inds=num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers//2)])
+        elif mode == 'HYBRID_SA':  # FC + SA
+            layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers-num_enc_layers//2)])
+            layers.extend([SAB(dim_hidden, dim_hidden, num_heads, ln=ln, dropout=dropout) for _ in range(num_enc_layers//2)])
         self.encoder = nn.ModuleList(layers)
         
     def forward(self, x, mask=None):
@@ -35,7 +40,7 @@ class Encoder(nn.Module):
         """
         self.out = self.embedding(x)  # (batch, ?, dim_embedding)
         for module in self.encoder:
-            if isinstance(module, (ISAB)):
+            if isinstance(module, (ISAB, SAB)):
                 self.out = module(self.out, mask=mask)  # (batch, ?, dim_hidden)
             else:
                 self.out = module(self.out) # (batch, ?, dim_hidden)
@@ -71,7 +76,7 @@ class Decoder(nn.Module):
     def __init__(self, dim_hidden=128, dim_outputs=20, # 20 (cuisines) or 6714 (ingredients)
                  num_dec_layers=4, dropout=0.2):
         super(Decoder, self).__init__()
-        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout, use_skip_conn=False) for _ in range(num_dec_layers)]
+        layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout, use_skip_conn=True) for _ in range(num_dec_layers)]
         layers.append(nn.Linear(dim_hidden, dim_outputs))
         self.decoder = nn.Sequential(*layers)
         
@@ -115,18 +120,22 @@ class CCNet(nn.Module):
 
         # Classification:
         if self.classify:
-            recipe_feature1 = self.pooler1(encoded_recipe, mask=pad_mask) 
+            _pad_mask = pad_mask.clone()
+            if self.complete and self.cpl_scheme == 'encoded':
+                _pad_mask[token_mask] = True
+                assert _pad_mask.sum()-pad_mask.sum() == x.size(0)
+            recipe_feature1 = self.pooler1(encoded_recipe, mask=_pad_mask) 
             logit_classification = self.classifier(recipe_feature1)  # (batch, dim_output)
             
         # Completion:
         if self.complete:
-            if hasattr(self, 'pooler2'):  # cpl_scheme == 'pooled'
+            if self.cpl_scheme == 'pooled' and hasattr(self, 'pooler2'):  # cpl_scheme == 'pooled'
                 recipe_feature2 = self.pooler2(encoded_recipe, mask=pad_mask)
                 logit_completion = self.completer(recipe_feature2)  # (batch, num_items)
-            else: # cpl_scheme == 'encoded'
+            elif self.cpl_scheme == 'encoded':
                 assert token_mask is not None, 'Is get_variables working?'
                 assert token_mask.sum() == x.size(0), 'Is there any size mismatch?'
-                encodings_to_predict = encoded_recipe.view(-1, self.dim_hidden)[token_mask]  # (batch, dim_hidden)
+                encodings_to_predict = encoded_recipe.view(-1, self.dim_hidden)[token_mask.view(-1)]  # (batch, dim_hidden)
                 logit_completion = self.completer(encodings_to_predict)  # (batch, num_items)
 
         return logit_classification, logit_completion

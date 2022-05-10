@@ -1,0 +1,12 @@
+device:  cpu
+features_boolean torch.Size([64, 6714]) labels_one_hot torch.Size([64, 20]) labels_int torch.Size([64])
+Total Number of Parameters 5631054
+-----Training the model-----
+Epoch 1/500
+    *label_clf [16  6  9 17  2  1 18 13 16  3  9  6]
+    *preds_clf [ 4 11 12 12 11 14 10  3 16  3 12 19]
+    >label_cpl [1922 1030 3228 5884  937 5913 1783 3097  909 1482]
+    >preds_cpl [1675 5464 6122 3569  801 5282 3308 3444 6336 4822]
+      0% | Loss_clf 3.4856 | Acc_clf 0.1406 | Loss_cpl 8.8588 | Acc_cpl 0.0000
+  0%|          | 0/500 [00:01<?, ?it/s][E thread_pool.cpp:113] Exception in thread pool task: mutex lock failed: Invalid argument
+[E thread_pool.cpp:113] Exception in thread pool task: mutex lock failed: Invalid argument

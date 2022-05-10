@@ -8,6 +8,7 @@ from torch.optim import lr_scheduler
 
 import wandb
 
+from utils import fix_seed
 from dataset import RecipeDataset
 from models import CCNet
 from loss import MultiClassASLoss, MultiClassFocalLoss
@@ -36,10 +37,7 @@ OPTIMIZERS_ARG = {
 
 def main(args):
     
-    np.random.seed(args.seed)
-    torch.random.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
-    torch.cuda.seed_all()
+    fix_seed(args.seed)
 
     # Datasets
     dataset_names = ['train', 'valid_clf', 'valid_cpl', 'test_clf', 'test_cpl']
@@ -64,15 +62,11 @@ def main(args):
     
     # WandB
     if args.wandb_log:
-        proj_name = ''
-        if args.classify:
-            proj_name += 'Cuisine_Classif. ' + ('+ ' if args.complete else '')
-        if args.complete:
-            proj_name += 'Recipe_Complet. '
+        proj_name = 'Cuisine_Classif. & Recipe_Complet. '
         wandb.init(project=proj_name, config=args)
         args = wandb.config
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu" if not torch.cuda.is_available() else ("cuda" if not hasattr(args, 'gpu') else f"cuda:{args.gpu}"))
     if args.verbose:
         print('device: ', device)
 
@@ -84,7 +78,7 @@ def main(args):
 
     model_ft = CCNet(dim_embedding=args.dim_embedding, dim_hidden=args.dim_hidden,
                      dim_outputs=labels_one_hot.size(1), num_items=features_boolean.size(-1),
-                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers,
+                     num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers, num_inds=args.num_inds,
                      ln=True, dropout=args.dropout, classify=args.classify, complete=args.complete,
                      encoder_mode=args.encoder_mode, pooler_mode=args.pooler_mode, cpl_scheme=args.cpl_scheme).to(device)
 
@@ -92,9 +86,9 @@ def main(args):
         pretrained_dict = torch.load(args.pretrained_model_path)
         model_dict = model_ft.state_dict()
         # 1. filter out unnecessary keys
-        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if 'encoder' in k and k in model_dict}
         # 2. overwrite entries in the existing state dict
-        model_dict.update(pretrained_dict) 
+        model_dict.update(pretrained_dict)
         # 3. load the new state dict
         model_ft.load_state_dict(model_dict)
         if args.freeze_encoder:
@@ -110,6 +104,9 @@ def main(args):
     optimizer = OPTIMIZERS[args.optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True],
                                                 lr=args.lr, weight_decay=args.weight_decay, **OPTIMIZERS_ARG[args.optimizer_name])
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
+    #scheduler1 = lr_scheduler.LinearLR(optimizer, start_factor=1e-3, end_factor=1., total_iters=args.n_epochs//10, verbose=False)
+    #scheduler2 = lr_scheduler.LinearLR(optimizer, start_factor=1., end_factor=0, total_iters=args.n_epochs - (args.n_epochs//10), verbose=False)
+    #scheduler = lr_scheduler.SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[args.n_epochs//10])
 
     try:
         best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
@@ -144,7 +141,7 @@ def main(args):
     
     if args.classify:
         _save('clf')
-    if args.classify:
+    if args.complete:
         _save('cpl')
 
     wandb.finish()
@@ -166,7 +163,7 @@ if __name__ == '__main__':
                         help='l2 regularization for optimizer.')
     parser.add_argument('-ss', '--step_size', default=10, type=int,
                         help='step size for learning rate scheduler.')
-    parser.add_argument('-sf', '--step_factor', default=0.1, type=float,
+    parser.add_argument('-sf', '--step_factor', default=0.5, type=float,
                         help='multiplicative factor for learning rate scheduler.')
     parser.add_argument('-es', '--early_stop_patience', default=20, type=int,
                         help='patience for early stopping.')
@@ -178,6 +175,8 @@ if __name__ == '__main__':
                         help='embedding dimensinon.')
     parser.add_argument('-hid', '--dim_hidden', default=256, type=int,
                         help='hidden dimensinon.')
+    parser.add_argument('-ind', '--num_inds', default=10, type=int,
+                        help='hyperparam for ISA')
     parser.add_argument('-dr', '--dropout', default=0.1, type=float,
                         help='probability for dropout layers.')
     parser.add_argument('-em', '--encoder_mode', default='HYBRID', type=str,
@@ -196,11 +195,13 @@ if __name__ == '__main__':
                         help=f"optimizers: {list(OPTIMIZERS.keys())}")
     parser.add_argument('-pt', '--pretrained_model_path', default=None, type=str,
                         help=f"path for pretrained model.")
-    parser.add_argument('-clf', '--classify', action='store_true')
+    parser.add_argument('-cls', '--classify', action='store_true')
     parser.add_argument('-cmp', '--complete', action='store_true')
     parser.add_argument('-fe', '--freeze_encoder', action='store_true')
     parser.add_argument('-log', '--wandb_log', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-ds', '--datasets', default=None)
+    parser.add_argument('-g', '--gpu', default=0, type=int)
 
     main(parser.parse_args())
+

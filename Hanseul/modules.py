@@ -10,7 +10,7 @@ class ResBlock(nn.Module):
     (Norm - GELU - Linear) - Dropout - (Norm - GELU - Linear).
     Apply skip connection only when dim_input == dim_output.
     """
-    def __init__(self, dim_input, dim_hidden, dim_output, norm='bn', dropout=0, use_skip_conn=True):
+    def __init__(self, dim_input, dim_hidden, dim_output, norm='bn', dropout=0., use_skip_conn=True):
         super(ResBlock, self).__init__()
         self.use_skip_conn = use_skip_conn and (dim_input == dim_output)
 
@@ -31,7 +31,7 @@ class ResBlock(nn.Module):
             out = self.norm1(out)
         out = self.fc1(F.gelu(out))
         if self.p > 0:
-            out = F.dropout(out)
+            out = F.dropout(out, p=self.p)
         if hasattr(self, 'norm2'):
             out = self.norm2(out)
         out = self.fc2(F.gelu(out))
@@ -44,7 +44,7 @@ class ResBlock(nn.Module):
 
 class MAB(nn.Module):
     """ Multi-head Attention + FeedForward """
-    def __init__(self, dim_Q, dim_K, dim_V, num_heads, ln=False, dropout=0):
+    def __init__(self, dim_Q, dim_K, dim_V, num_heads, ln=True, dropout=0., **kwargs):
         super(MAB, self).__init__()
         self.dim_V = dim_V
         self.num_heads = num_heads
@@ -74,12 +74,12 @@ class MAB(nn.Module):
             
         O = self.fc_att(torch.cat((Att.bmm(V_)).split(Q.size(0), 0), 2))  # (batch, q_len, d_hid), Multihead Attention
         if self.p > 0: 
-            O = F.dropout(O)  # Dropout
+            O = F.dropout(O, p=self.p)  # Dropout
         O = O + Q  # Add 
         O = O if getattr(self, 'ln0', None) is None else self.ln0(O)  # normalize
         _O = self.fc_o(O)  # FF
         if self.p > 0:
-            _O = F.dropout(_O)  # Dropout
+            _O = F.dropout(_O, p=self.p)  # Dropout
         O = O + _O # Add
         O = O if getattr(self, 'ln1', None) is None else self.ln1(O)  # normalize
         return O
@@ -87,7 +87,7 @@ class MAB(nn.Module):
 
 class SAB(nn.Module):
     """ Self Attention Block """
-    def __init__(self, dim_in, dim_out, num_heads, ln=False, dropout=0.2):
+    def __init__(self, dim_in, dim_out, num_heads, ln=True, dropout=0., **kwargs):
         super(SAB, self).__init__()
         self.mab = MAB(dim_in, dim_in, dim_out, num_heads, ln=ln, dropout=dropout)
 
@@ -97,7 +97,7 @@ class SAB(nn.Module):
 
 class ISAB(nn.Module):
     """ Induced Self Attention Block (Set Transformers) """
-    def __init__(self, dim_in, dim_out, num_heads, num_inds, ln=False, dropout=0.2):
+    def __init__(self, dim_in, dim_out, num_heads, num_inds, ln=True, dropout=0., **kwargs):
         super(ISAB, self).__init__()
         self.A = nn.Parameter(torch.Tensor(1, num_inds, dim_out))
         nn.init.xavier_uniform_(self.A)
@@ -111,7 +111,7 @@ class ISAB(nn.Module):
 
 class PMA(nn.Module):
     """ Pooling by Multi-head Attention (Set Transformers) """
-    def __init__(self, dim, num_heads, num_seeds, ln=False, dropout=0.2):
+    def __init__(self, dim, num_heads, num_seeds, ln=True, dropout=0., **kwargs):
         super(PMA, self).__init__()
         self.S = nn.Parameter(torch.Tensor(1, num_seeds, dim))
         nn.init.xavier_uniform_(self.S)

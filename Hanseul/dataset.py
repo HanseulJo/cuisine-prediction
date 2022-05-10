@@ -23,9 +23,9 @@ class RecipeDataset(Dataset):
             label_one_hot = self.labels_one_hot[idx]
             if hasattr(self, 'labels_int_enc'):  # classification (train, valid_clf)
                 label_int_enc = self.labels_int_enc[idx]
-                return feature_boolean, label_one_hot, label_int_enc
+                return feature_boolean, label_one_hot, int(label_int_enc)
             if hasattr(self, 'labels_id'):       # completion (valid_cpl)
                 label_id = self.labels_id[idx]
-                return feature_boolean, label_one_hot, label_id
+                return feature_boolean, label_one_hot, int(label_id)
         else:
             return feature_boolean # test_clf, test_cpl

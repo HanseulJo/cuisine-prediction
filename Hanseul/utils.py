@@ -1,7 +1,20 @@
+import random, os
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+def fix_seed(seed=42):
+    random.seed(seed) # random
+    np.random.seed(seed) # numpy
+    os.environ["PYTHONHASHSEED"] = str(seed) # os
+    # pytorch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True 
+    torch.backends.cudnn.benchmark = False 
+    
 
 def bin_to_int(x, num_col=None):
     """
@@ -20,6 +33,7 @@ def bin_to_int(x, num_col=None):
     for i in range(batch_size):
         out[i][:x[i].sum().long()] = torch.arange(num_ingreds)[x[i]==1]
     return out
+
 
 def _concatenate(running_v, new_v):
     if running_v is not None:
@@ -77,16 +91,13 @@ def get_variables(x, pad_idx=None,  complete=True, phase='train', cpl_scheme='po
                 how_mask = torch.rand(int_x.size()).to(device)
                 int_x[token_mask * (how_mask<0.8)] = pad_idx
                 int_x[token_mask * (how_mask>0.9)] = torch.randint(pad_idx, int_x.size())[token_mask * (how_mask>0.9)].to(x.device)
-                token_mask = token_mask.view(-1)  # flattened token_mask is used in the model.
 
             else:  # add additional [MASK] token to each recipe.
                 batch_size, num_ingreds = int_x.size()
                 int_x = torch.cat([int_x, torch.full((batch_size,1), pad_idx).to(device)], 1)
                 pad_mask = (int_x == pad_idx)
-                pad_mask = int_x == pad_idx
                 pad_mask[:,-1] = False
                 token_mask = torch.full((batch_size, num_ingreds+1), False).to(device)
                 token_mask[:, -1] = True
-                token_mask = token_mask.view(-1)  # flattened token_mask is used in the model.
 
     return int_x, feasible, pad_mask, token_mask, labels_cpl
