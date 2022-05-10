@@ -4,6 +4,7 @@ from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
 import torch
+from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score, top_k_accuracy_score, accuracy_score
 import wandb
@@ -133,14 +134,13 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
                 if verbose:
                     print("VALID_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_clf.items()]))
-                val_loss = float(stat_valid_clf['Loss'])
-                val_acc = float(stat_valid_clf['Acc'])
+                scheduler_criterion = float(stat_valid_clf['Loss'])
             if complete:
                 stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10, verbose=verbose)
                 if verbose:
                     print("VALID_CPL", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_cpl.items()]))
-                val_loss = float(stat_valid_cpl['Loss'])
-                val_acc = float(stat_valid_cpl['Acc'])
+                if not classify:
+                    scheduler_criterion = float(stat_valid_cpl['Loss'])
         
         patience_add = True
         if classify:
@@ -157,12 +157,17 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 best['cpl']['Model'] = deepcopy(model.state_dict()) # deep copy the model
                 if early_stop_patience is not None:
                     patience_cnt, patience_add = 0, False
-        if early_stop_patience is not None and patience_add:
-            patience_cnt += 1
-        print("patience_cnt", patience_cnt)
+        if early_stop_patience is not None:
+            if patience_add:
+                patience_cnt += 1
+            print("patience_cnt", patience_cnt)
 
         if wandb_log:
-            log_dict = {'learning_rate': optimizer.param_groups[0]['lr']} # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
+            if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
+                log_dict = {'learning_rate': optimizer.param_groups[0]['lr']}   # for ReduceOnPlateau
+            else:
+                log_dict = {'learning_rate': scheduler.get_last_lr()[0]}        # for other schedulers
+            
             if classify:
                 log_dict.update({'TrainClassify'+k: v for k, v in stat_train.items()})
                 log_dict.update({'ValidClassify'+k: v for k, v in stat_valid_clf.items()})
@@ -170,8 +175,11 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
                 log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_cpl.items()})
             wandb.log(log_dict)
         
-        scheduler.step(-val_acc)  # validation completion acc if we do completion, else classification acc
-        
+        if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
+            scheduler.step(scheduler_criterion)  # validation completion loss if we do completion, else classification loss
+        else:
+            scheduler.step()
+
         if early_stop_patience is not None and patience_cnt > early_stop_patience:
             if verbose:
                 print(f'Early stop at epoch {epoch}.')

@@ -104,6 +104,9 @@ def main(args):
     optimizer = OPTIMIZERS[args.optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True],
                                                 lr=args.lr, weight_decay=args.weight_decay, **OPTIMIZERS_ARG[args.optimizer_name])
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
+    #scheduler1 = lr_scheduler.LinearLR(optimizer, start_factor=1e-3, end_factor=1., total_iters=args.n_epochs//10, verbose=False)
+    #scheduler2 = lr_scheduler.LinearLR(optimizer, start_factor=1., end_factor=0, total_iters=args.n_epochs - (args.n_epochs//10), verbose=False)
+    #scheduler = lr_scheduler.SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[args.n_epochs//10])
 
     try:
         best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
