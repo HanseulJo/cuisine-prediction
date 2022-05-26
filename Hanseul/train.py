@@ -4,6 +4,7 @@ from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score, top_k_accuracy_score, accuracy_score
@@ -11,7 +12,9 @@ import wandb
 
 from utils import _concatenate, get_variables
 
-def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5, verbose=True):
+def statistics(model, phase, dataloaders, dataset_sizes, device, k=5):
+    celoss = nn.CrossEntropyLoss().to(device)  # universal criterion
+    
     running_loss = running_acc = running_top_k_acc = 0.
     running_labels = running_preds = None
     
@@ -38,10 +41,10 @@ def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5,
         #    print('preds', preds.cpu().numpy()[:10])
         
         if phase in ['train_eval', 'valid_clf']:
-            running_loss += criterion(outputs_clf, labels_int.long()) * batch_size
+            running_loss += celoss(outputs_clf, labels_int.long()) * batch_size
             running_top_k_acc += top_k_accuracy_score(labels_int.cpu().numpy(), outputs_clf.cpu().numpy(), k=k, labels=np.arange(outputs_clf.size(1)), normalize=False)
         elif phase in ['valid_cpl']:
-            running_loss += criterion(outputs_cpl, labels_int.long()) * batch_size
+            running_loss += celoss(outputs_cpl, labels_int.long()) * batch_size
             running_top_k_acc += top_k_accuracy_score(labels_int.cpu().numpy(), outputs_cpl.cpu().numpy(), k=k, labels=np.arange(outputs_cpl.size(1)), normalize=False)
         running_acc += accuracy_score(labels_int.cpu().numpy(), preds.cpu().numpy(), normalize=False)
         running_labels = _concatenate(running_labels, labels_int)
@@ -61,7 +64,7 @@ def statistics(model, criterion, phase, dataloaders, dataset_sizes, device, k=5,
 
 # train classification only / completion only / simultaneously.
 def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
-         device='cpu', num_epochs=20, early_stop_patience=None,
+         device='cpu', num_epochs=20, early_stop_patience=None, mask_scheme=None,
          random_seed=1, wandb_log=False, verbose=True):
     
     classify = model.classify
@@ -87,7 +90,7 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         
         for idx, (feature_boolean, _, labels_clf) in enumerate(dataloaders['train']):
             feature_boolean = feature_boolean.to(device)
-            int_x, feasible, pad_mask, token_mask, labels_cpl = get_variables(feature_boolean, complete=complete, phase='train', cpl_scheme=model.cpl_scheme)
+            int_x, feasible, pad_mask, token_mask, labels_cpl = get_variables(feature_boolean, complete=complete, phase='train', cpl_scheme=model.cpl_scheme, mask_scheme=mask_scheme)
             labels_clf = labels_clf[feasible].to(device)
 
             optimizer.zero_grad()
@@ -128,30 +131,32 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
         model.eval()
         with torch.set_grad_enabled(False):
             if classify:
-                stat_train = statistics(model, criterion, 'train_eval', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
+                stat_train = statistics(model, 'train_eval', dataloaders, dataset_sizes, device, k=5)
                 if verbose:
                     print("TRAIN_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_train.items()]))
-                stat_valid_clf = statistics(model, criterion, 'valid_clf', dataloaders, dataset_sizes, device, k=5, verbose=verbose)
+                stat_valid_clf = statistics(model, 'valid_clf', dataloaders, dataset_sizes, device, k=5)
                 if verbose:
                     print("VALID_CLF", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_clf.items()]))
                 scheduler_criterion = float(stat_valid_clf['Loss'])
             if complete:
-                stat_valid_cpl = statistics(model, criterion, 'valid_cpl', dataloaders, dataset_sizes, device, k=10, verbose=verbose)
+                stat_valid_cpl = statistics(model, 'valid_cpl', dataloaders, dataset_sizes, device, k=10)
                 if verbose:
                     print("VALID_CPL", " ".join([f"{k} {v:.4f}" for k, v in stat_valid_cpl.items()]))
-                if not classify:
+                if classify:
+                    scheduler_criterion += float(stat_valid_cpl['Loss'])
+                else:
                     scheduler_criterion = float(stat_valid_cpl['Loss'])
         
         patience_add = True
         if classify:
-            if stat_valid_clf['Acc'] > best['clf']['Acc']:
+            if stat_valid_clf['Loss'] < best['clf']['Loss']:
                 best['clf'].update(stat_valid_clf)
                 best['clf']['BestEpoch'] = int(epoch)
                 best['clf']['Model'] = deepcopy(model.state_dict()) # deep copy the model
                 if early_stop_patience is not None:
                     patience_cnt, patience_add = 0, False
         if complete:
-            if stat_valid_cpl['Acc'] > best['cpl']['Acc']:
+            if stat_valid_cpl['Loss'] < best['cpl']['Loss']:
                 best['cpl'].update(stat_valid_cpl)
                 best['cpl']['BestEpoch'] = int(epoch)
                 best['cpl']['Model'] = deepcopy(model.state_dict()) # deep copy the model
@@ -163,21 +168,23 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
             print("patience_cnt", patience_cnt)
 
         if wandb_log:
-            if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
+            if scheduler is None or isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
                 log_dict = {'learning_rate': optimizer.param_groups[0]['lr']}   # for ReduceOnPlateau
             else:
                 log_dict = {'learning_rate': scheduler.get_last_lr()[0]}        # for other schedulers
             
             if classify:
-                log_dict.update({'TrainClassify'+k: v for k, v in stat_train.items()})
-                log_dict.update({'ValidClassify'+k: v for k, v in stat_valid_clf.items()})
+                log_dict.update({'Train/Classify/'+k: v for k, v in stat_train.items()})
+                log_dict.update({'Valid/Classify/'+k: v for k, v in stat_valid_clf.items()})
+                log_dict.update({'Best/Classify/'+k: v for k, v in best['clf'].items() if k != 'Model'})
             if complete:
-                log_dict.update({'ValidComplete'+k: v for k, v in stat_valid_cpl.items()})
+                log_dict.update({'Valid/Complete/'+k: v for k, v in stat_valid_cpl.items()})
+                log_dict.update({'Best/Complete/'+k: v for k, v in best['cpl'].items() if k != 'Model'})
             wandb.log(log_dict)
         
         if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
             scheduler.step(scheduler_criterion)  # validation completion loss if we do completion, else classification loss
-        else:
+        elif scheduler is not None:
             scheduler.step()
 
         if early_stop_patience is not None and patience_cnt > early_stop_patience:
@@ -189,11 +196,11 @@ def train(model, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
     if verbose:
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
     
-    if wandb_log:
-        if classify:
-            wandb.config.update({'ValidClassify'+k: v for k, v in best['clf'].items() if k != 'Model'})
-        if complete:
-            wandb.config.update({'ValidComplete'+k: v for k, v in best['cpl'].items() if k != 'Model'})
+    #if wandb_log:
+    #    if classify:
+    #        wandb.config.update({'BestClassify'+k: v for k, v in best['clf'].items() if k != 'Model'})
+    #    if complete:
+    #        wandb.config.update({'BestComplete'+k: v for k, v in best['cpl'].items() if k != 'Model'})
     
     print('==== Best Result ====')
     for k in best:

@@ -42,7 +42,7 @@ def _concatenate(running_v, new_v):
         return new_v.clone().detach().cpu().numpy()
 
 
-def get_variables(x, pad_idx=None,  complete=True, phase='train', cpl_scheme='pooled'):
+def get_variables(x, pad_idx=None, complete=True, phase='train', cpl_scheme='pooled', mask_scheme=None):
     """
     Inputs:
     - x: binary vectors of recipes. Size: (batchsize, 6714)
@@ -66,31 +66,11 @@ def get_variables(x, pad_idx=None,  complete=True, phase='train', cpl_scheme='po
         assert cpl_scheme in ['pooled', 'encoded']
 
         if cpl_scheme == 'pooled' and phase == 'train':  # randomly drop an ingredient for each row
-            feasible = x.sum(1) > 1  
-            int_x = int_x[feasible]  # recipes with at least 2 ingredients
-            batch_size = int_x.size(0)
-            _rand = torch.rand(int_x.size()).to(device)
-            _rand[int_x == pad_idx] = -1
-            masked_ingred = torch.argmax(_rand, 1)
-            labels_cpl = int_x[torch.arange(batch_size), masked_ingred].clone().detach()
-            int_x[torch.arange(batch_size), masked_ingred] = pad_idx  # drop ingredients
+            int_x, feasible, labels_cpl = _drop_one(x, int_x, pad_idx, device)
 
         elif cpl_scheme == 'encoded':
             if phase == 'train':  # randomly change an ingredient into [MASK] token (= 6714)
-                feasible = x.sum(1) > 1  
-                int_x = int_x[feasible]  # recipes with at least 2 ingredients
-                batch_size = int_x.size(0)
-                pad_mask = (int_x == pad_idx)
-                _rand = torch.rand(int_x.size()).to(device)
-                _rand[pad_mask] = -1
-                masked_ingred = torch.argmax(_rand, 1)
-                token_mask = torch.full(int_x.size(), False).to(device)
-                token_mask[torch.arange(batch_size), masked_ingred] = True
-                labels_cpl = int_x[token_mask].clone().detach()
-                # BERT style random masking. 80%: change to [MASK]. 10%: change to random idx. 10%: not mask.
-                how_mask = torch.rand(int_x.size()).to(device)
-                int_x[token_mask * (how_mask<0.8)] = pad_idx
-                int_x[token_mask * (how_mask>0.9)] = torch.randint(pad_idx, int_x.size())[token_mask * (how_mask>0.9)].to(x.device)
+                int_x, feasible, pad_mask, token_mask, labels_cpl = _mask_one(x, int_x, pad_idx, device)
 
             else:  # add additional [MASK] token to each recipe.
                 batch_size, num_ingreds = int_x.size()
@@ -99,5 +79,54 @@ def get_variables(x, pad_idx=None,  complete=True, phase='train', cpl_scheme='po
                 pad_mask[:,-1] = False
                 token_mask = torch.full((batch_size, num_ingreds+1), False).to(device)
                 token_mask[:, -1] = True
-
+    
+    elif phase == 'train':  # classification only
+        if mask_scheme == 'drop_one':  # randomly drop an ingredient for each row
+            int_x, feasible, _ = _drop_one(x, int_x, pad_idx, device)
+        elif mask_scheme == 'mask_one':
+            int_x, feasible, pad_mask, _, _ = _mask_one(x, int_x, pad_idx, device)
+        elif mask_scheme == 'random_drop':
+            int_x, feasible = _random_drop(x, int_x, pad_idx, device)
     return int_x, feasible, pad_mask, token_mask, labels_cpl
+
+
+def _drop_one(x, int_x, pad_idx, device):
+    feasible = x.sum(1) > 1  
+    int_x = int_x[feasible]  # recipes with at least 2 ingredients
+    batch_size = int_x.size(0)
+    _rand = torch.rand(int_x.size()).to(device)
+    _rand[int_x == pad_idx] = -1  # to ignore pad_idx
+    masked_ingred = torch.argmax(_rand, 1)
+    labels_cpl = int_x[torch.arange(batch_size), masked_ingred].clone().detach()
+    int_x[torch.arange(batch_size), masked_ingred] = pad_idx  # drop ingredients
+    return int_x, feasible, labels_cpl
+
+def _mask_one(x, int_x, pad_idx, device):
+    feasible = x.sum(1) > 1  
+    int_x = int_x[feasible]  # recipes with at least 2 ingredients
+    batch_size = int_x.size(0)
+    pad_mask = (int_x == pad_idx)
+    _rand = torch.rand(int_x.size()).to(device)
+    _rand[pad_mask] = -1  # to ignore pad_idx
+    masked_ingred = torch.argmax(_rand, 1)
+    token_mask = torch.full(int_x.size(), False).to(device)
+    token_mask[torch.arange(batch_size), masked_ingred] = True
+    labels_cpl = int_x[token_mask].clone().detach()
+    # BERT style random masking. 80%: change to [MASK]. 10%: change to random idx. 10%: not mask.
+    how_mask = torch.rand(int_x.size()).to(device)
+    int_x[token_mask * (how_mask<0.8)] = pad_idx
+    int_x[token_mask * (how_mask>0.9)] = torch.randint(pad_idx, int_x.size())[token_mask * (how_mask>0.9)].to(x.device)
+    return int_x, feasible, pad_mask, token_mask, labels_cpl
+
+def _random_drop(x, int_x, pad_idx, device):
+    pad_mask = (int_x == pad_idx)
+    _rand = torch.rand(int_x.size()).to(device)
+    mask_ingred = _rand < 0.15  # position of ingredients to drop: True (choose 15% randomly)
+    while torch.all(mask_ingred[torch.logical_not(pad_mask)]):  # not to drop all existing ingredients
+        _rand = torch.rand(int_x.size()).to(device)
+        mask_ingred = _rand < 0.15
+    int_x[mask_ingred] = pad_idx  # drop
+    feasible = (int_x != pad_idx).sum(1) > 0  # recipes with at least 2 left ingredients
+    int_x = int_x[feasible]  # remove redundant recipes
+    return int_x, feasible
+

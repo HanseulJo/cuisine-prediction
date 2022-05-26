@@ -10,7 +10,7 @@ from modules import ResBlock, SAB, ISAB, PMA
 class Encoder(nn.Module):
     def __init__(self, dim_embedding=256, dim_hidden=128,
                  num_items=6714, num_inds=10, num_heads=4, 
-                 num_enc_layers=4, ln=True, dropout=0.2,
+                 num_enc_layers=4, ln=True, dropout=0,
                  mode='HYBRID'):
         super(Encoder, self).__init__()
         assert mode in ['FC', 'SA', 'ISA', 'HYBRID', 'HYBRID_SA']
@@ -30,7 +30,7 @@ class Encoder(nn.Module):
             layers.extend([ISAB(dim_hidden, dim_hidden, num_heads, num_inds=num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers//2)])
         elif mode == 'HYBRID_SA':  # FC + SA
             layers.extend([ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='ln', dropout=dropout) for _ in range(num_enc_layers-num_enc_layers//2)])
-            layers.extend([SAB(dim_hidden, dim_hidden, num_heads, ln=ln, dropout=dropout) for _ in range(num_enc_layers//2)])
+            layers.extend([SAB(dim_hidden, dim_hidden, num_heads, num_inds=num_inds, ln=ln, dropout=dropout) for _ in range(num_enc_layers//2)])
         self.encoder = nn.ModuleList(layers)
         
     def forward(self, x, mask=None):
@@ -50,7 +50,7 @@ class Encoder(nn.Module):
 ## Pooler
 ## Given ingredient encoding matrix, compute recipe feature vectors
 class Pooler(nn.Module):
-    def __init__(self, dim_hidden=128, num_heads=4, num_outputs=1, ln=True, dropout=0.2, mode='PMA'):
+    def __init__(self, dim_hidden=128, num_heads=4, num_outputs=1, ln=True, dropout=0, mode='PMA'):
         super(Pooler, self).__init__()
         assert mode in ['SumPool', 'PMA']
         self.mode = mode
@@ -74,7 +74,7 @@ class Pooler(nn.Module):
 ## Decoder: Classifier
 class Decoder(nn.Module):
     def __init__(self, dim_hidden=128, dim_outputs=20, # 20 (cuisines) or 6714 (ingredients)
-                 num_dec_layers=4, dropout=0.2):
+                 num_dec_layers=4, dropout=0):
         super(Decoder, self).__init__()
         layers = [ResBlock(dim_hidden, dim_hidden, dim_hidden, norm='bn', dropout=dropout, use_skip_conn=True) for _ in range(num_dec_layers)]
         layers.append(nn.Linear(dim_hidden, dim_outputs))
@@ -88,7 +88,7 @@ class Decoder(nn.Module):
 # recipe completion using recipe feature vector
 class CCNet(nn.Module):
     def __init__(self, dim_embedding=256, dim_hidden=128, dim_outputs=20, num_items=6714, 
-                 num_inds=10, num_heads=8, num_enc_layers=8, num_dec_layers=4, ln=True, dropout=0.5,
+                 num_inds=10, num_heads=8, num_enc_layers=8, num_dec_layers=4, ln=True, dropout=0,
                  classify=True, complete=True, encoder_mode = 'HYBRID', pooler_mode = 'PMA', cpl_scheme = 'pooled'):
         super(CCNet, self).__init__()
         assert classify or complete
@@ -121,15 +121,15 @@ class CCNet(nn.Module):
         # Classification:
         if self.classify:
             _pad_mask = pad_mask.clone()
-            if self.complete and self.cpl_scheme == 'encoded':
+            if token_mask is not None: #self.complete and self.cpl_scheme == 'encoded':
                 _pad_mask[token_mask] = True
-                assert _pad_mask.sum()-pad_mask.sum() == x.size(0)
+                #assert _pad_mask.sum()-pad_mask.sum() == x.size(0)
             recipe_feature1 = self.pooler1(encoded_recipe, mask=_pad_mask) 
             logit_classification = self.classifier(recipe_feature1)  # (batch, dim_output)
             
         # Completion:
         if self.complete:
-            if self.cpl_scheme == 'pooled' and hasattr(self, 'pooler2'):  # cpl_scheme == 'pooled'
+            if self.cpl_scheme == 'pooled':  # cpl_scheme == 'pooled'
                 recipe_feature2 = self.pooler2(encoded_recipe, mask=pad_mask)
                 logit_completion = self.completer(recipe_feature2)  # (batch, num_items)
             elif self.cpl_scheme == 'encoded':

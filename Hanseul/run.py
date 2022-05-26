@@ -21,22 +21,24 @@ LOSSES = {
 }
 OPTIMIZERS = {
     'SGD': optim.SGD,
+    'RMSprop': optim.RMSprop,
     'MomentumSGD': optim.SGD,
-    'NestrovSGD': optim.SGD,
+    'NesterovSGD': optim.SGD,
     'Adam': optim.Adam,
     'AdamW': optim.AdamW,
 }
 OPTIMIZERS_ARG = {
     'SGD': {},
+    'RMSprop': {},
     'MomentumSGD': {'momentum':0.9},
-    'NestrovSGD': {'momentum':0.9, 'nesterov':True},
+    'NesterovSGD': {'momentum':0.9, 'nesterov':True},
     'Adam': {},
     'AdamW': {},
 }
 
 
 def main(args):
-    
+
     fix_seed(args.seed)
 
     # Datasets
@@ -62,11 +64,13 @@ def main(args):
     
     # WandB
     if args.wandb_log:
-        proj_name = 'Cuisine_Classif. & Recipe_Complet. '
-        wandb.init(project=proj_name, config=args)
+        wandb.init(config=args)
         args = wandb.config
 
-    device = torch.device("cpu" if not torch.cuda.is_available() else ("cuda" if not hasattr(args, 'gpu') else f"cuda:{args.gpu}"))
+    if torch.cuda.is_available():
+        if hasattr(args, 'gpu') and args.gpu is not None: device = torch.device(f"cuda:{args.gpu}")
+        else: device = torch.device('cuda')
+    else: device = torch.device('cpu')
     if args.verbose:
         print('device: ', device)
 
@@ -104,13 +108,10 @@ def main(args):
     optimizer = OPTIMIZERS[args.optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True],
                                                 lr=args.lr, weight_decay=args.weight_decay, **OPTIMIZERS_ARG[args.optimizer_name])
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
-    #scheduler1 = lr_scheduler.LinearLR(optimizer, start_factor=1e-3, end_factor=1., total_iters=args.n_epochs//10, verbose=False)
-    #scheduler2 = lr_scheduler.LinearLR(optimizer, start_factor=1., end_factor=0, total_iters=args.n_epochs - (args.n_epochs//10), verbose=False)
-    #scheduler = lr_scheduler.SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[args.n_epochs//10])
 
     try:
         best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
-                     device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience,
+                     device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience, mask_scheme=args.mask_scheme,
                      random_seed=args.seed, wandb_log=args.wandb_log, verbose=args.verbose)
     except KeyboardInterrupt:
         if args.wandb_log:
@@ -122,30 +123,120 @@ def main(args):
     if not os.path.isdir('./weights/'):
         os.mkdir('./weights/')
     fname = ['ckpt', 'CCNet']
-    fname += ['Enc', args.encoder_mode, 'Pool', args.pooler_mode, 'Cpl', args.cpl_scheme]
+    fname += ['Enc'+args.encoder_mode, 'Pool'+args.pooler_mode, 'Cpl'+str(args.cpl_scheme).title()]
     fname += [f'NumEnc{args.num_enc_layers}', f'NumDec{args.num_dec_layers}']
-    fname += [f'bs{args.batch_size}',f'lr{args.lr}', f'seed{args.seed}',f'nEpochs{args.n_epochs}']
-    
-    def _save(name):
-        fname_ = fname.copy()
-        fname_.insert(2, name)
-        for k in best[name]:
-            if k == 'BestEpoch':
-                fname_.append(f"{k}{best[name][k]}")
-            elif k != 'Model':
-                fname_.append(f"{k}{best[name][k]:.3f}")
-        fname_ = '_'.join(fname_) + '.pt'
-        torch.save(best[name]['Model'], os.path.join('./weights/', fname_))
-        if args.wandb_log:
-            wandb.save(os.path.join('./weights/', fname_))
-    
-    if args.classify:
-        _save('clf')
-    if args.complete:
-        _save('cpl')
+    fname += [f'Hid{args.dim_hidden}', f'Emb{args.dim_embedding}', f'Ind{args.num_inds}']
+
+    if args.save_model:
+        def _save(name):
+            fname_ = fname.copy()
+            fname_.insert(2, name)
+            for k in best[name]:
+                if k == 'BestEpoch':
+                    fname_.append(f"{k}{best[name][k]}")
+                elif k != 'Model':
+                    fname_.append(f"{k}{best[name][k]:.3f}")
+            fname_ = '_'.join(fname_) + '.pt'
+            torch.save(best[name]['Model'], os.path.join('./weights/', fname_))
+            if args.wandb_log:
+                wandb.save(os.path.join('./weights/', fname_))
+
+        if args.classify:
+            _save('clf')
+        if args.complete:
+            _save('cpl')
 
     wandb.finish()
+
     
+def main_sweep(args=None):
+
+    with wandb.init(config=args) as run:
+        args = wandb.config
+        fix_seed(args.seed)
+
+        # Datasets
+        dataset_names = ['train', 'valid_clf', 'valid_cpl', 'test_clf', 'test_cpl']
+        recipe_datasets = {x: RecipeDataset(os.path.join(args.data_dir, x)) for x in dataset_names}
+        # DataLoaders
+        subset_indices = {x: [i for i in range(len(recipe_datasets[x]) if args.subset_length is None else args.subset_length)
+                              ] for x in dataset_names}
+        dataloaders = {x: DataLoader(Subset(recipe_datasets[x], subset_indices[x]),
+                                     batch_size=args.batch_size if ('train' in x) else args.batch_size_eval,
+                                     shuffle=('train' in x)) for x in dataset_names}
+        dataset_sizes = {x: len(subset_indices[x]) for x in dataset_names}
+        if args.verbose:
+            print(dataset_sizes)
+        dataloaders['train_eval'] = DataLoader(Subset(recipe_datasets['train'], subset_indices['train']),
+                                     batch_size=args.batch_size_eval, shuffle=False)
+        dataset_sizes['train_eval'] = dataset_sizes['train']
+
+        if torch.cuda.is_available():
+            if hasattr(args, 'gpu') and args.gpu is not None: device = torch.device(f"cuda:{args.gpu}")
+            else: device = torch.device('cuda')
+        else: device = torch.device('cpu')
+        if args.verbose:
+            print('device: ', device)
+
+        ## Get a batch of training data
+        features_boolean, labels_one_hot, labels_int = next(iter(dataloaders['train']))
+        if args.verbose:
+            print('features_boolean {} labels_one_hot {} labels_int {}'.format(
+                features_boolean.size(), labels_one_hot.size(), labels_int.size()))
+
+        model_ft = CCNet(dim_embedding=args.dim_embedding, dim_hidden=args.dim_hidden,
+                         dim_outputs=labels_one_hot.size(1), num_items=features_boolean.size(-1),
+                         num_enc_layers=args.num_enc_layers, num_dec_layers=args.num_dec_layers, num_inds=args.num_inds,
+                         ln=True, dropout=args.dropout, classify=args.classify, complete=args.complete,
+                         encoder_mode=args.encoder_mode, pooler_mode=args.pooler_mode, cpl_scheme=args.cpl_scheme).to(device)
+        total_params = sum(dict((p.data_ptr(), p.numel()) for p in model_ft.parameters() if p.requires_grad).values())
+        wandb.config.update({'num_parameters': total_params})
+        if args.verbose:
+            #print(model_ft)  # Model Info
+            print("Total Number of Parameters", total_params)
+
+        # Loss, Optimizer, LR Scheduler
+        criterion = LOSSES[args.loss]().to(device)
+        optimizer = OPTIMIZERS[args.optimizer_name]([p for p in model_ft.parameters() if p.requires_grad == True],
+                                                    lr=args.lr, weight_decay=args.weight_decay, **OPTIMIZERS_ARG[args.optimizer_name])
+        #scheduler = None
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.step_factor, patience=args.step_size, verbose=args.verbose)
+
+        try:
+            best = train(model_ft, dataloaders, criterion, optimizer, scheduler, dataset_sizes,
+                         device=device, num_epochs=args.n_epochs, early_stop_patience=args.early_stop_patience, mask_scheme=args.mask_scheme,
+                         random_seed=args.seed, wandb_log=True, verbose=args.verbose)
+        except KeyboardInterrupt:
+            wandb.finish()
+            print("Finished by KeyboardInterupt")
+            raise Exception
+
+        ## save model
+        if args.save_model:
+            if not os.path.isdir('./weights/'):
+                os.mkdir('./weights/')
+            fname = ['ckpt', 'CCNet']
+            fname += ['Enc'+args.encoder_mode, 'Pool'+args.pooler_mode, 'Cpl'+str(args.cpl_scheme).title()]
+            fname += [f'NumEnc{args.num_enc_layers}', f'NumDec{args.num_dec_layers}']
+            fname += [f'Hid{args.dim_hidden}', f'Emb{args.dim_embedding}', f'Ind{args.num_inds}']
+
+            def _save(name):
+                fname_ = fname.copy()
+                fname_.insert(2, name)
+                for k in best[name]:
+                    if k == 'BestEpoch':
+                        fname_.append(f"{k}{best[name][k]}")
+                    elif k != 'Model':
+                        fname_.append(f"{k}{best[name][k]:.3f}")
+                fname_ = '_'.join(fname_) + '.pt'
+                torch.save(best[name]['Model'], os.path.join('./weights/', fname_))
+                wandb.save(os.path.join('./weights/', fname_))
+
+            if args.classify:
+                _save('clf')
+            if args.complete:
+                _save('cpl')
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -202,6 +293,7 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-ds', '--datasets', default=None)
     parser.add_argument('-g', '--gpu', default=0, type=int)
+    parser.add_argument('-sv', '--save_model', action='save_model')
 
     main(parser.parse_args())
 
