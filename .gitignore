@@ -5,3 +5,7 @@ wiki.simple/wiki.simple.vec
 .DS_Store
 cc.en.300.bin
 cc.en.300.vec
+Chanho/models
+Chanho/train_recs
+Chanho/test_recs
+Chanho/valid_recs
