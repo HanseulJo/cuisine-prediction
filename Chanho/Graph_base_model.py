@@ -89,7 +89,7 @@ def graph_cpl(train_file, test_file, result_path, depth, weights, recipe_th, ing
                 ingred_recs_depth[k][start + query].sort(key=lambda x : x[1], reverse=True)
 
     for k in range(depth):
-        with open("./recs/Graph_rec_cpl_{}_{}_depth_{}.pickle".format(w1,w2,k), 'wb') as f:
+        with open(os.path.join(result_path, "Graph_rec_cpl_{}_{}_depth_{}.pickle".format(w1,w2,k)), 'wb') as f:
             pickle.dump(ingred_recs_depth[k], f)
 
             
