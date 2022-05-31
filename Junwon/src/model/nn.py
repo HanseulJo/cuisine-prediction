@@ -6,7 +6,7 @@ import torch.nn.functional as F
 class DNN(nn.Module):
     def __init__(self, input_size, output_size, fc_layer_sizes, dropout):
         super(DNN, self).__init__()
-        assert isinstance(fc_layer_sizes, list) and len(fc_layer_sizes) >= 4
+        assert isinstance(fc_layer_sizes, list) and len(fc_layer_sizes) >= 2
         assert dropout > 0 and dropout < 1
         self.input_size = input_size
         self.output_size = output_size
