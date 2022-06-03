@@ -6,7 +6,7 @@ from make_train_cpl import make_train_cpl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='사용법 테스트입니다.')
-    parser.add_argument('--s', required=False, help='save directory path', default='../Container')
+    parser.add_argument('--s', required=False, help='save directory path', default='../Container/')
     parser.add_argument('--d', required=False, help='data directory path', default='../')
     args = parser.parse_args()
     data_path = args.d
