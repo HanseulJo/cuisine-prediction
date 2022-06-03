@@ -124,8 +124,6 @@ def train(model, dataloaders, criterion, optimizer, scheduler, metrics,
                 elif task == 'completion':
                     val_topk_acc = epoch_topk_acc
 
-            # if phase == 'train':
-            #     scheduler.step()
             if phase == 'val':
                 scheduler.step(val_loss)
 
@@ -144,7 +142,6 @@ def train(model, dataloaders, criterion, optimizer, scheduler, metrics,
                        'val_loss': val_loss,
                        'best_val_loss': best_loss,
                        'learning_rate': optimizer.param_groups[0]['lr']}
-                        # scheduler.get_last_lr()[0] for CosineAnnealingWarmRestarts
             if task == 'classification':
                 log_dict['train_macro_f1'] = train_macro_f1
                 log_dict['train_micro_f1'] = train_micro_f1

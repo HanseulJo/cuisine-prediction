@@ -71,9 +71,6 @@ def main(args):
                                 lr=args.lr, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.2)
 
     # LR scheduler
-    # lr_scheduler.StepLR(optimizer_ft, args.step_size, gamma=0.1)
-    # exp_lr_scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer_ft,
-    #                                                             T_0=10, T_mult=1, eta_min=0, last_epoch=-1)
     exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=step_size,
                                                       eps=1e-08, verbose=True)
 
@@ -105,11 +102,11 @@ def main(args):
         visualize_confusion_matrix(model_ft, dataloaders['val'], class_names, args, device, data_dir)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Thumbnail dataset image classification.')
+    parser = argparse.ArgumentParser(description='FCN training.')
 
     parser.add_argument('-t', '--task', default='classification', choices=['classification', 'completion'],
                         help='define the task of training: \'classification\' or \'completion\'.')
-    parser.add_argument('-d', '--data_dir', default='/home/cuisine-prediction/Chanho/Container/',
+    parser.add_argument('-d', '--data_dir', default='../Container/',
                         type=str,
                         help='path to the dataset.')
     parser.add_argument('-b', '--batch_size', default=16, type=int,

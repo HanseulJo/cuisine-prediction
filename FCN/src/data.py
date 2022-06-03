@@ -57,18 +57,7 @@ class RecipeDataset(Dataset):
             self.classes = sorted(list(set(self.labels))) if not self.dataset_type == 'test' else list(range(20))
         elif task == 'completion':
             self.classes = len(self.labels[0]) if self.dataset_type == 'validation' else 6714
-        # self.transform = transformHello, I'm sorry but I can't fully understand your point.
-        # But I hope my answer could clarify your question.
-        #
-        # For example, when the time window is 3 and the input is
-        # 0  33,55
-        # 1  33,55
-        # 2  22,11
-        # 3  11
-        # A basket should be a set.
-        # So baskets in this input would be (33,55), (33,55,22,11) (22,11).
-        # Thank you.
-        # self.target_transform = target_transform
+
 
     def __len__(self):
         return len(self.features)
@@ -90,8 +79,5 @@ class RecipeDataset(Dataset):
                 label = self.labels[idx]
             else:
                 return feature
-        # if self.transform:
-        #     image = self.transform(image)
-        # if self.target_transform:
-        #     label = self.target_transform(label)
+
         return feature, label
