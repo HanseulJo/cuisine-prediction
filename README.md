@@ -25,12 +25,16 @@ Requirements are listed in ```requrements.txt```
 ### Training
 Run ```FCN/DNN_train.py```
 e.g.
-```python DNN_train.py -t classification -d '../Container/' -b 16 -e 50 -lr 1e-3 -step 10 -f [2048,1024,512,256] -w true```
+```
+python DNN_train.py -t classification -d '../Container/' -b 16 -e 50 -lr 1e-3 -step 10 -f [2048,1024,512,256] -w true
+```
 
 ### Inference
 Run ```FCN/DNN_inference.py```
 e.g.
-```python DNN_inference.py -t completion -n valid_cpl -d '../Container/' -b 16 -f [1024,1024,512,512]```
+```
+python DNN_inference.py -t completion -n valid_cpl -d '../Container/' -b 16 -f [1024,1024,512,512]
+```
 
 
 ## Encode, Pool, and Classify by Neural Net (EPCnet)
