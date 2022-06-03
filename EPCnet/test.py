@@ -58,7 +58,7 @@ def run_inference(args):
         recipe_datasets = {x: RecipeDataset(os.path.join(args.data_dir, x)) for x in dataset_names}
         recipe_datasets['train_clf'] = recipe_datasets['train']
     else:
-        # Use Pre-loaded datasets.
+        # Use Pre-loaded datasets. (compatible with jupyter notebook)
         recipe_datasets = args.datasets
         args.datasets = None
     
@@ -137,33 +137,33 @@ def run_inference(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('-d', '--data_dir', default='./Container/', type=str,
+    parser.add_argument('-d', '--data_dir', default='../Container/', type=str,
                         help='path to the dataset.')
-    parser.add_argument('-b', '--batch_size_eval', default=2048, type=int,
+    parser.add_argument('-b', '--batch_size_eval', default=1024, type=int,
                         help='batch size for evaluation.')
-    parser.add_argument('-e', '--dim_embedding', default=256, type=int,
+    parser.add_argument('-e', '--dim_embedding', default=512, type=int,
                         help='embedding dimensinon.')
-    parser.add_argument('-h', '--dim_hidden', default=256, type=int,
+    parser.add_argument('-dh', '--dim_hidden', default=512, type=int,
                         help='hidden dimensinon.')
     parser.add_argument('-i', '--num_inds', default=10, type=int,
                         help='num_inds for ISA / HYBRID encoder.')
-    parser.add_argument('-g', '--gpu', default=0, type=int,
+    parser.add_argument('-g', '--gpu', default=None,
                         help='gpu number. (cuda:#)')
     parser.add_argument('-o', '--dropout', default=0.1, type=float,
                         help='probability for dropout layers.')
     parser.add_argument('-E', '--encoder_mode', default='HYBRID', type=str,
-                        help='encoder mode: "FC", "SA", "ISA", "HYBRID", "HYBRID_SA"')
+                        help='encoder mode: "FC", "SA", "ISA", "HYBRID", "HYBRID_SA".\n Note: HYBRID==FC+ISA, HYBRID_SA==FC+SA.')
     parser.add_argument('-P', '--pooler_mode', default='PMA', type=str,
                         help='encoder pooler mode: "SumPool", "PMA"')
     parser.add_argument('-C', '--cpl_scheme', default='pooled', type=str,
                         help='completion scheme: (a)="pooled", (b)="endcoded"')
     parser.add_argument('-ne', '--num_enc_layers', default=4, type=int,
-                        help='depth of encoder (number of Resblock/ISAB')
+                        help='depth of encoder (number of encoder blocks)')
     parser.add_argument('-nd', '--num_dec_layers', default=2, type=int,
-                        help='depth of decoder (number of Resblock/ISAB')
+                        help='depth of decoder (number of decoder blocks(ResBlocks))')
     parser.add_argument('-p', '--pretrained_model_path', default=None, type=str,
                         help=f"path for pretrained model.")
-    parser.add_argument('-f', '--classify', action='store_true')
+    parser.add_argument('-f', '--classify', action='store_true', help='Wand ')
     parser.add_argument('-t', '--complete', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-ds', '--datasets', default=None)
