@@ -240,7 +240,7 @@ def main_sweep(args=None):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('-dir', '--data_dir', default='./Container/', type=str,
+    parser.add_argument('-dir', '--data_dir', default='../Container/', type=str,
                         help='path to the dataset.')
     parser.add_argument('-bs', '--batch_size', default=64, type=int,
                         help='batch size for training.')
