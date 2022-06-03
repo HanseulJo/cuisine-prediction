@@ -116,8 +116,8 @@ def run_inference(args):
     fname += ['Enc'+args.encoder_mode, 'Pool'+args.pooler_mode, 'Cpl'+str(args.cpl_scheme).title()]
     fname += [f'NumEnc{args.num_enc_layers}', f'NumDec{args.num_dec_layers}']
     fname += [f'Hid{args.dim_hidden}', f'Emb{args.dim_embedding}', f'Ind{args.num_inds}']
-    if not os.path.isdir('./recs/'):
-        os.mkdir('./recs/')    
+    if not os.path.isdir('../Recs/'):
+        os.mkdir('../Recs/')    
     
     model_ft.eval()
     with torch.set_grad_enabled(False):
@@ -132,12 +132,12 @@ def run_inference(args):
             fname_ = fname[:]
             fname_.insert(2, phase)
             fname_ = '_'.join(fname_) + '.pickle'
-            save_inference(recs, os.path.join('./recs', fname_))
+            save_inference(recs, os.path.join('../Recs', fname_))
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('-d', '--data_dir', default='./Container/', type=str,
+    parser.add_argument('-d', '--data_dir', default='../Container/', type=str,
                         help='path to the dataset.')
     parser.add_argument('-b', '--batch_size_eval', default=1024, type=int,
                         help='batch size for evaluation.')

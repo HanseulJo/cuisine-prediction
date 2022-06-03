@@ -47,7 +47,7 @@ def make_train_cpl(data_path, save_path):
     int_labels_train_compl = np.array(labels_train_compl)
     bin_labels_train_compl = np.eye(num_ingredients)[labels_train_compl]
 
-    with h5py.File(save_path + 'train_cpl', 'w') as h5f:
+    with h5py.File(os.path.join(save_path, 'train_cpl'), 'w') as h5f:
         h5f.create_dataset('features_boolean', data=bin_data_train_compl, compression="gzip")
         h5f.create_dataset('labels_one_hot', data=bin_labels_train_compl, compression="gzip")
         h5f.create_dataset('labels_id', data=int_labels_train_compl, compression="gzip")
