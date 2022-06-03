@@ -262,9 +262,9 @@ if __name__ == '__main__':
                         help='random seed number.')
     parser.add_argument('-sub', '--subset_length', default=None, type=int,
                         help='using a subset of dataset. how many?')
-    parser.add_argument('-emb', '--dim_embedding', default=256, type=int,
+    parser.add_argument('-emb', '--dim_embedding', default=512, type=int,
                         help='embedding dimensinon.')
-    parser.add_argument('-hid', '--dim_hidden', default=256, type=int,
+    parser.add_argument('-hid', '--dim_hidden', default=512, type=int,
                         help='hidden dimensinon.')
     parser.add_argument('-ind', '--num_inds', default=10, type=int,
                         help='hyperparam for ISA')
@@ -280,7 +280,7 @@ if __name__ == '__main__':
                         help='depth of encoder (number of Resblock/ISAB')
     parser.add_argument('-nd', '--num_dec_layers', default=2, type=int,
                         help='depth of decoder (number of Resblock/ISAB')
-    parser.add_argument('-lo', '--loss', default='ASLoss', type=str,
+    parser.add_argument('-lo', '--loss', default='MultiClassASLoss', type=str,
                         help=f"loss functions: {list(LOSSES.keys())}")
     parser.add_argument('-op', '--optimizer_name', default='AdamW', type=str,
                         help=f"optimizers: {list(OPTIMIZERS.keys())}")
