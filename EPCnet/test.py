@@ -101,7 +101,7 @@ def run_inference(args):
     if args.pretrained_model_path is not None:
         if args.verbose:
             print("Model Filename:", args.pretrained_model_path.split('/')[-1])
-        pretrained_dict = torch.load(args.pretrained_model_path)
+        pretrained_dict = torch.load(args.pretrained_model_path, map_location=device)
         model_dict = model_ft.state_dict()
         # 1. filter out unnecessary keys
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
@@ -137,7 +137,7 @@ def run_inference(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('-d', '--data_dir', default='../Container/', type=str,
+    parser.add_argument('-d', '--data_dir', default='./Container/', type=str,
                         help='path to the dataset.')
     parser.add_argument('-b', '--batch_size_eval', default=1024, type=int,
                         help='batch size for evaluation.')
@@ -155,7 +155,7 @@ if __name__ == '__main__':
                         help='encoder mode: "FC", "SA", "ISA", "HYBRID", "HYBRID_SA".\n Note: HYBRID==FC+ISA, HYBRID_SA==FC+SA.')
     parser.add_argument('-P', '--pooler_mode', default='PMA', type=str,
                         help='encoder pooler mode: "SumPool", "PMA"')
-    parser.add_argument('-C', '--cpl_scheme', default='pooled', type=str,
+    parser.add_argument('-C', '--cpl_scheme', default=None, type=str,
                         help='completion scheme: (a)="pooled", (b)="endcoded"')
     parser.add_argument('-ne', '--num_enc_layers', default=4, type=int,
                         help='depth of encoder (number of encoder blocks)')
@@ -163,7 +163,8 @@ if __name__ == '__main__':
                         help='depth of decoder (number of decoder blocks(ResBlocks))')
     parser.add_argument('-p', '--pretrained_model_path', default=None, type=str,
                         help=f"path for pretrained model.")
-    parser.add_argument('-f', '--classify', action='store_true', help='Wand ')
+    parser.add_argument('-ss', '--subset_length', default=None)
+    parser.add_argument('-f', '--classify', action='store_true')
     parser.add_argument('-t', '--complete', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-ds', '--datasets', default=None)
