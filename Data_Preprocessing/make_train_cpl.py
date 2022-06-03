@@ -52,3 +52,7 @@ def make_train_cpl(data_path, save_path):
         h5f.create_dataset('labels_one_hot', data=bin_labels_train_compl, compression="gzip")
         h5f.create_dataset('labels_id', data=int_labels_train_compl, compression="gzip")
 
+if __name__ == '__main__':
+    data_path = '../'
+    save_path = '../Container/'
+    make_train_cpl(data_path, save_path)
