@@ -15,7 +15,7 @@ def read_train_data(path):
 
 def read_ingredient_names(ingredient_path):
     ingredients_names = []
-    with open(ingredient_path, 'r') as f:
+    with open(ingredient_path, 'r', encoding='utf-8') as f:
         for line in csv.reader(f):
             ingredients_names.append(line[0])
     return ingredients_names
